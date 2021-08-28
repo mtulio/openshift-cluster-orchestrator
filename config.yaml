@@ -1,0 +1,115 @@
+
+config:
+  workdir: ./.local
+
+dependencies:
+  - name: oc
+    env_name: OC_CLI
+  - name: openshift-installer
+    path: x
+    env_name: OC_INST
+  # TODO instructions to build this binary
+  # Ref PR: https://github.com/mtulio/installer/pull/4
+  # $(which time) -v ./hack/build.sh
+  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    env_name: OC_INST
+  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    env_name: OC_INST
+
+defaults:
+  aws:
+    baseDomain: devcluster.openshift.com
+    controlPlane:
+      vm_type: m5.xlarge
+      # TODO: check if installer supports it
+      vm_spot_price: 0.192
+    compute:
+      vm_type: m5.xlarge
+      # TODO: check if installer supports it
+      vm_spot_price: 0.192
+    vol_type: gp2
+    vol_size: 128  
+
+cluster_profiles:
+  aws_m5x1xgp2:
+    name: aws_m5x1xgp2
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+  aws_m5x2xgp2:
+    name: aws_m5x2xgp2
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+  aws_m5x1xgp3:
+    name: aws_m5x1xgp3
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+  aws_m5x2xgp3:
+    name: aws_m5x2xgp3
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+    vol_type: gp3
+  aws_m5x1xgp3_64G:
+    name: aws_m5x1xgp3
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 64
+  aws_m5x2xgp3_64G:
+    name: aws_m5x1xgp3
+    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 64
+
+benchmark_profiles:
+  fio_defaults:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    options:
+        rw: write
+        ioengine: sync
+        fdatasync: 1
+        size: 200m
+        bs: 2300
+        directory: /var/lib/etcd/_benckmark-fio
+        name_prefix: fio_io_
+        output_format: json
+        output_prefix: /var/lib/etcd/_benckmark-fio/fio_results_write_
+  fio_etcd_defaults:
+    image: quay.io/openshift-scale/etcd-perf
+    base_dir: "/var/lib/etcd/"
+
+# To run? cluster-name = cluster_profile + benchmark_profile
+clusters:
+  t1aws:
+    cluster_profile: aws_m5x1xgp2
+    benchmark_profiles:
+      - fio_defaults
+      #- fio_etcd_defaults
+    # 0 : first node on index list
+    # * : all nodes found on label list
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: 0
+  
+  t2aws:
+    cluster_profile: aws_m5x2xgp2
+    benchmark_profile: fio_defaults
+
+  t3aws:
+    profile: aws_m5x1xgp3
+  t4aws:
+    profile: aws_m5x2xgp3
+  t5aws:
+    profile: aws_m5x1xgp3
+  t6aws:
+    profile: aws_m5x1xgp3
+  t7aws:
+    profile: aws_m5x1xgp3
+  t8aws:
+    profile: aws_m5x1xgp3
+
+# TODO (to run in parallel?)
+batteries: []

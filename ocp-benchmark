@@ -1,0 +1,105 @@
+#!/bin/sh
+
+#
+# Collect metrics data from Prometheus API.
+# See helper function (show_help|-h) for more information.
+#
+# TODO: migrate run-test.sh to here
+
+#Safeguards
+set -o pipefail
+set -o nounset
+set -o errexit
+
+# ####
+# MAIN
+# ####
+function show_help {
+
+    cat <<-EOF
+Usage: ${0} command [options]
+
+Available commands:
+    create          Create a cluster.
+    destroy         Destroy a cluster.
+    run             Run benchmark from a existing cluster.
+    list
+
+Global options:
+    -h | --help                 Show this help
+    --cluster-name          Name of cluster to be created. Should match with installation directory
+
+Available options for 'list' (only):
+
+    item            Item to list: cluster-profiles, benchmark-profiles, clusters?, results?
+
+Available options for 'create' (only):
+
+    --cluster-profile       Tell profile to provision the cluster
+    --run                   Create a cluster and run the tests (depends on run flags)
+    --kubeconfig path       Creeate a like to your kubeconfig on .local/{cluster-name}/auth/kubeconfig
+
+Available options for 'run' (only):
+
+    --runner-id         {name}  Runner unique identifier.
+    --cluster-name      {name}  Cluster name to lookup the kubeconfig: .local/{cluster-name}/auth/kubeconfig
+    --benchmark-profile {name}  Benchmark to run the test.
+    --dump-prometheus           Dump Prometheus DB to .local/results/{runner-id}/prometheus-db
+
+Examples:
+    # Create a cluster
+    ${0} create --cluster-profile aws_m5x1xgp2 --cluster-name aws_m5x1xgp2
+
+    # Create a cluster and run the test
+    ${0} create \
+        --cluster-profile aws_m5x1xgp2 \
+        --cluster-name aws_m5x1xgp2 \
+        --run \
+        --runner-id b1-c1 \
+        --benchmark-profile fio_defaults \
+        --dump-prometheus
+
+    # Start running the test
+    ${0} run \
+        --runner-id b1-c1 \
+        --cluster-name aws_m5x1xgp2 \
+        --benchmark-profile fio_defaults \
+        --dump-prometheus \
+
+    ${0} run \
+        --runner-id b1-c2 \
+        --cluster-name aws_m5x1xgp2 \
+        --benchmark-profile fio_defaults \
+        --dump-prometheus
+
+    #> Results will be saved on .local/results/{runner-id}
+
+
+EOF
+
+}
+
+#
+# sub commands:
+# - create
+# - destroy
+# - run
+#
+
+
+
+
+while true; do
+    case "$1" in
+        -h | --help         ) show_help; exit 2 ;;
+        -v | --verbose      ) OPT_VERBOSE=true; shift ;;
+        -d | --debug        ) OPT_DEBUG=true; shift ;;
+        --battery-id        ) OPT_GATHER_QUERY="$2"; shift 2 ;;
+        --test-id           ) OPT_GATHER_QUERY_RANGE="$2"; shift 2 ;;
+        --cluster-name      )
+        --cluster-profile   ) OPT_GATHER_QUERY="$2"; shift 2 ;;
+        --benchmark-profile ) OPT_GATHER_QUERY="$2"; shift 2 ;;
+        -- ) shift; break ;;
+        * ) echo "Option not found"; break ;;
+    esac
+done
