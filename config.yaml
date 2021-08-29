@@ -2,6 +2,9 @@
 config:
   workdir: ./.local
 
+#
+# Tool dependencies
+#
 dependencies:
   - name: oc
     path: /usr/bin/oc
@@ -31,17 +34,20 @@ dependencies:
     repo: git@github.com:mtulio/installer.git
     version: SPLAT-254s1v2
 
+#
+# OpenShift Installer Config | cluster
+#
 defaults:
   aws:
     baseDomain: devcluster.openshift.com
     controlPlane:
       vm_type: m5.xlarge
-      # TODO: check if installer supports it
-      vm_spot_price: 0.192
+      # TODO: check if it's supported
+      #vm_spot_price: 0.192
     compute:
       vm_type: m5.xlarge
-      # TODO: check if installer supports it
-      vm_spot_price: 0.192
+      # TODO: check if it's supported
+      #vm_spot_price: 0.192
     vol_type: gp2
     vol_size: 128  
 
@@ -56,6 +62,9 @@ cluster_profiles:
     name: aws_m5x2xgp2
     installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
   aws_m5x1xgp3:
     name: aws_m5x1xgp3
     installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
@@ -78,14 +87,15 @@ cluster_profiles:
     vol_type: gp3
     vol_size: 64
 
-
-# Benchmark test Configuration
+#
+# Benchmark configuration
+#
 benchmark_profiles:
   fio_defaults:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/"
     loop: 100
-    commands: |>
+    commands: |
       --rw=write \
       --ioengine=sync \
       --fdatasync=1 \
@@ -104,8 +114,10 @@ benchmark_profiles:
     loop: 1
 
 
+#
 # Create runner setup (step before run)
 # runner-profile = cluster_profile + benchmark_profile
+#
 runner_profiles:
   b1_t1:
     cluster_profile: aws_m5x1xgp2
@@ -123,19 +135,15 @@ runner_profiles:
     benchmark_profiles:
       - fio_defaults
       - fio_etcd_defaults
-    # 0 : first node on index list
-    # * : all nodes found on label list
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: 0
 
   b1_t3:
-    profile: aws_m5x1xgp3
+    cluster_profile: aws_m5x1xgp3
     benchmark_profiles:
       - fio_defaults
       - fio_etcd_defaults
-    # 0 : first node on index list
-    # * : all nodes found on label list
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: 0
@@ -145,8 +153,6 @@ runner_profiles:
     benchmark_profiles:
       - fio_defaults
       - fio_etcd_defaults
-    # 0 : first node on index list
-    # * : all nodes found on label list
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: 0

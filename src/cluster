@@ -1,0 +1,210 @@
+#!/bin/sh
+
+#
+# Handle installer tasks
+#
+
+
+#
+# Manifests Patchs
+#
+
+# Patch Machine Manifest for AWS to add two block devices
+patch_machine_aws_2xDevBlocks() {
+
+  local tmpdir=$(mktemp)
+  rm -rf ${tmpdir}
+  mkdir -p ${tmpdir}
+
+  for machine_manifest in $(ls ${CLUSTER_HOME}/openshift/99_openshift-cluster-api_master-machines-*.yaml); do 
+    
+    local machine_file=$(basename ${machine_manifest})
+    
+    # extract header (pre blockDevices)
+    sed '1,/blockDevices/!d' ${machine_manifest} > ${tmpdir}/${machine_file}_00
+
+    # duplicate device list block
+    cat << EOF > ${tmpdir}/${machine_file}_01-devs
+      - ebs:
+          encrypted: true
+          iops: 0
+          kmsKey:
+            arn: ""
+          volumeType: ${1:-"${DEFAULT_VOL_TYPE}"}
+          volumeSize: ${2:-"${DEFAULT_VOL_SIZE}"}
+      - deviceName: /dev/xvdb
+        ebs:
+          encrypted: true
+          iops: 0
+          kmsKey:
+            arn: ""
+          volumeType: ${1:-"${DEFAULT_VOL_TYPE}"}
+          volumeSize: ${2:-"${DEFAULT_VOL_SIZE}"}
+
+EOF
+    # extract footer (post blockDevices
+    grep credentialsSecret -A 999 ${machine_manifest} > ${tmpdir}/${machine_file}_03
+
+    # join files
+    cat ${tmpdir}/${machine_file}_* > ${tmpdir}/${machine_file}
+
+    echo "Aggregated file created on ${tmpdir}/${machine_file} , overwriting to ${machine_manifest}"
+    cp ${tmpdir}/${machine_file} ${machine_manifest}
+  done
+  rm -rf ${tmpdir}
+}
+
+
+patch_machineConfig_aws_mount_etcd() {
+
+  # https://docs.fedoraproject.org/en-US/fedora-coreos/storage/
+  # https://coreos.github.io/butane/examples/#mirrored-boot-disk
+  
+  cat << EOF > ${CLUSTER_HOME}/openshift/99_openshift-machineconfig_00-master-etcd.yaml
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: master
+  name: 00-master-etcd
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      disks:
+      - device: /dev/nvme1n1
+        wipe_table: true
+        partitions:
+        - size_mib: 0
+          label: etcd
+      filesystems:
+        - path: /var/lib/etcd
+          device: /dev/disk/by-partlabel/etcd
+          format: xfs
+          wipe_filesystem: true
+    systemd:
+      units:
+        - name: var-lib-etcd.mount
+          enabled: true
+          contents: |
+            [Unit]
+            Before=local-fs.target
+            [Mount]
+            Where=/var/lib/etcd
+            What=/dev/disk/by-partlabel/etcd
+            [Install]
+            WantedBy=local-fs.target
+EOF
+}
+
+#
+# Install Config
+#
+
+create_install_config() {
+
+  # Check env 
+  if [[ -z ${PULL_SECRET} ]]; then
+    echo "Environment var is not defined: PULL_SECRET. Exiting...";
+    exit 1;
+  fi
+
+  if [[ -z ${SSH_PUB_KEYS} ]]; then
+    echo "Environment var is not defined: SSH_PUB_KEYS. Exiting...";
+    exit 1;
+  fi
+
+  VOL_TYPE="${1:-"${DEFAULT_VOL_TYPE}"}"
+  VOL_SIZE="${2:-"${DEFAULT_VOL_SIZE}"}"
+
+  local install_config="${CLUSTER_HOME}/install-config.yaml"
+  cat << EOF > ${install_config}
+apiVersion: v1
+baseDomain: ${CLUSTER_CONF_BASE_DOMAIN}
+compute:
+- architecture: amd64
+  hyperthreading: Enabled
+  name: worker
+  platform:
+    ${CLUSTER_CONF_PLATFORM_NAME}:
+      type: ${EC2_SIZE_WORKER}
+      rootVolume:
+        size: ${2:-"${DEFAULT_VOL_SIZE}"}
+        type: ${1:-"${DEFAULT_VOL_TYPE}"}
+  replicas: 3
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  platform:
+    ${CLUSTER_CONF_PLATFORM_NAME}:
+      type: ${EC2_SIZE_MASTER}
+      rootVolume:
+        size: ${2:-"${DEFAULT_VOL_SIZE}"}
+        type: ${1:-"${DEFAULT_VOL_TYPE}"}
+  replicas: 3
+metadata:
+  name: ${CLUSTER_NAME}
+networking:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  machineNetwork:
+  - cidr: 10.0.0.0/16
+  networkType: OpenShiftSDN
+  serviceNetwork:
+  - 172.30.0.0/16
+platform:
+  ${CLUSTER_CONF_PLATFORM_NAME}:
+    region: ${CLUSTER_CONF_PLATFORM_REGION}
+    ${CLUSTER_CONF_PLATFORM_EXTRA_CONF:-""}
+publish: External
+pullSecret: '${PULL_SECRET}'
+sshKey: |
+  ${SSH_PUB_KEYS}
+
+EOF
+
+}
+
+
+create_kubeconfig() {
+    local auth_dir=$(dirname ${CLUSTER_KUBECONFIG})
+    test -d ${auth_dir} || echo "Creating auth dir: ${auth_dir}"
+    mkdir -p  ${auth_dir}
+    ln -svf ${KUBECONFIG} ${CLUSTER_KUBECONFIG}
+    exit 0
+}
+
+# [cluster] sub command handler
+cluster_main() {
+    echo "=${OPT_KUBECONFIG}"
+
+    case ${OPT_CLUSTER_CMD} in
+        "create") 
+            if [[ ${OPT_KUBECONFIG:-} == true ]]; then
+                create_kubeconfig
+                return
+            fi
+            check_cluster_exists_to_create
+            check_dependencies
+            create_install_config
+            create_manifests
+            apply_manifests_patchs
+            if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
+                return
+            fi
+            if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
+                create_ignition_files
+                return
+            fi
+            create_cluster
+        ;;
+        "destroy")
+            backup_cluster_installdir
+            check_cluster_exists_to_destroy
+            destroy_cluster
+        ;;
+    esac
+}
