@@ -316,76 +316,13 @@ test_fio_all_nodes() {
   echo "INFO: Waiting for tests to complete in all nodes..."
   wait "${PIDS[@]}"
   echo "INFO: Done tests ran in all nodes"
-  run_prometheus_dump
+  run_prometheus_dump || true
 }
-
-# run_fio() {
-
-#   # temp here:
-#   OC_CLI="./oc-${RELEASE} --kubeconfig ${TDIR}/auth/kubeconfig "
-
-#   echo "#> Checking disk topology"
-#   for EN in $($OC_CLI get nodes -l node-role.kubernetes.io/master= -o jsonpath='{.items[0].metadata.name}'); do
-#     echo "#> NODE=${EN}"
-#     ${OC_CLI} debug node/${EN} -- chroot /host /bin/bash -c "lsblk" 2>/dev/null
-#   done
-
-#   # choosing one node to take the test. TODO: give option to test to all nodes in parallel
-#   NODE=$($OC_CLI get nodes -l node-role.kubernetes.io/master= -o jsonpath='{.items[0].metadata.name}')
-
-#   echo "Running tests as user [$($OC_CLI whoami)] to API [$($OC_CLI whoami --show-server)] and node [${NODE}]"
-#   ${OC_CLI} debug node/${NODE} -- chroot /host /bin/bash -c \
-#     "TEST_DIR=\"/var/lib/etcd/_benchmark\"; \
-#      mkdir -p \$TEST_DIR; \
-#      for l in {a..j} ; do \
-#       for i in {1..10} ; do \
-#         echo \"[\$l][\$i] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
-#         podman run --rm \
-#           -v \$TEST_DIR:\$TEST_DIR:Z \
-#           ljishen/fio --rw=write \
-#                       --ioengine=sync \
-#                       --fdatasync=1 \
-#                       --size=200m \
-#                       --bs=2300 \
-#                       --directory=\"\$TEST_DIR\" \
-#                       --name=\"fio_io_\${l}\${i}\" \
-#                       --output-format=json \
-#                       --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;\
-#         sleep 10; \
-#         #ls -lsh \$TEST_DIR/; \
-#         rm -f \$TEST_DIR/fio_io_\${l}\${i}* ||true ; \
-#       done; \
-#     done; \
-#     tar cfz \${TEST_DIR}_results.tar.gz \
-#       \${TEST_DIR}*/*.json" 2>/dev/null |tee -a results/fio_stdout-${TID}-${NODE}.txt
-
-#     # Run etcd-fio (right after all FIO burn)
-#     ${OC_CLI} debug node/${NODE} -- chroot /host /bin/bash -c \
-#       "podman run \
-#         --volume /var/lib/etcd:/var/lib/etcd:Z \
-#         quay.io/openshift-scale/etcd-perf" > results/fio_etcd-${TID}.txt ;
-
-
-#     # Prometheus DB
-#     echo "#> Waiting 5m to collect PrometheusDB..."
-#     sleep 300
-#     mkdir -p results/fio-${TID}-prometheus
-#     ${OC_CLI} rsync -c prometheus -n openshift-monitoring \
-#       pod/prometheus-k8s-0:/prometheus/ results/fio-${TID}-prometheus
-#     tar cfJ results/fio-${TID}-prometheus.tar.xz results/fio-${TID}-prometheus
-#     test -f results/fio-${TID}-prometheus.tar.xz && rm -rf results/fio-${TID}-prometheus
-
-# }
-
-# run_fio_master() {
-#   MASTER_NODE=$1
-# }
 
 #
 # t1-2 : m5+gp2
 # t3-4 : m5+gp3
 # t5-6 : m5+gp3  # 64G
-# t7-8 : m6i+gp3 # 64G
 #
 case $TID in
   # m5.xlarge 1x gp2 128G
@@ -419,7 +356,7 @@ case $TID in
         sleep 300; test_fio_all_nodes;
       ;;
   #> runner
-  "t4r") run_fio;
+  "t4r") test_fio_all_nodes;
       ;;
   # m5.xlarge 1x gp3 64G
   "t5") DEFAULT_VOL_TYPE="gp3";
