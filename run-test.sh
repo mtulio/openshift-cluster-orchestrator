@@ -297,7 +297,7 @@ run_prometheus_dump() {
   local dump_dir="results/fio-${TID:0:2}-prometheus"
   mkdir -p ${dump_dir}
   ${OC_CLI} rsync -c prometheus -n openshift-monitoring \
-    pod/prometheus-k8s-0:/prometheus/ ${dump_dir}
+    pod/prometheus-k8s-0:/prometheus/ ${dump_dir} || true
   tar cfJ ${dump_dir}.tar.xz ${dump_dir}
   test -f ${dump_dir}.tar.xz && rm -rf ${dump_dir}
 
