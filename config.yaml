@@ -38,51 +38,71 @@ dependencies:
 # OpenShift Installer Config | cluster
 #
 defaults:
+  network:
+    type: OpenShiftSDN
+    cluster_cidr: 10.128.0.0/14
+    cluster_prefix: 23
+    machine_cidr: 10.0.0.0/16
+    service_cidr: 172.30.0.0/16
   aws:
+    # installer: publish
+    publish: External
+    # installer: .platform.aws
+    platform:
+      region: us-east-1
     baseDomain: devcluster.openshift.com
     controlPlane:
-      vm_type: m5.xlarge
+      type: m5.xlarge
       # TODO: check if it's supported
       #vm_spot_price: 0.192
     compute:
-      vm_type: m5.xlarge
+      type: m5.xlarge
       # TODO: check if it's supported
       #vm_spot_price: 0.192
     vol_type: gp2
-    vol_size: 128  
+    vol_size: 128
 
+  azure:
+    # installer: publish
+    publish: External
+    # installer: .platform.azure
+    platform:
+      baseDomainResourceGroupName: os4-common
+      cloudName: AzurePublicCloud
+      outboundType: Loadbalancer
+      region: eastus
 
 # Cluster definition to provision
 cluster_profiles:
   aws_m5x1xgp2:
     name: aws_m5x1xgp2
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
     platform: aws
   aws_m5x2xgp2:
     name: aws_m5x2xgp2
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
     manifest_patchs:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
   aws_m5x1xgp3:
     name: aws_m5x1xgp3
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
     platform: aws
   aws_m5x2xgp3:
     name: aws_m5x2xgp3
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
     vol_type: gp3
   aws_m5x1xgp3_64G:
     name: aws_m5x1xgp3
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
     platform: aws
     vol_type: gp3
     vol_size: 64
   aws_m5x2xgp3_64G:
     name: aws_m5x1xgp3
-    installer: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
     vol_type: gp3
     vol_size: 64
@@ -91,6 +111,7 @@ cluster_profiles:
 # Benchmark configuration
 #
 benchmark_profiles:
+  # FIO write test
   fio_defaults:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/"
@@ -106,13 +127,29 @@ benchmark_profiles:
       --output-format=json \
       --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;
 
+  # AWS Doc (init ebs)
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
+  fio_read_libaio:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 50
+    commands: |
+      --rw=write \
+      --ioengine=libaio \
+      --bs=16k \
+      --iodepth=32 \
+      --direct=1
+      --size=1.6g \
+      --directory=\"\$TEST_DIR\" \
+      --name=\"fio_io_\${l}\${i}\" \
+      --output-format=json \
+      --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;
 
   # FIO embeeded on etcd-perf image
   fio_etcd_defaults:
     image: quay.io/openshift-scale/etcd-perf
     base_dir: "/var/lib/etcd/"
     loop: 1
-
 
 #
 # Create runner setup (step before run)

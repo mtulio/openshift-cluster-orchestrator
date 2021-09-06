@@ -28,6 +28,7 @@ Available commands:
     list            List current components (clusters, results, profiles, etc)
     report          Run pre-build reports based on results collected
     run             Run benchmark from a existing cluster.
+    config          Show current configuration.
 
 Global options:
     -h | --help             Show this help
@@ -118,15 +119,18 @@ cmd_run() {
 
 set_defaults() {
 
+    # Global config
+    declare -g GLOBAL_CONFIG="${PWD}/config.yaml"
+
     # Workdir
-    declare -g WORKDIR="${PWD}/$(yq . config.yaml |jq -r .config.workdir)"
-    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq . config.yaml |jq -r .config.workdir)/clusters"
+    declare -g WORKDIR="${PWD}/$(yq . ${GLOBAL_CONFIG} |jq -r .config.workdir)"
+    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq . ${GLOBAL_CONFIG} |jq -r .config.workdir)/clusters"
 
     # Installer options
     declare -g OPT_CLUSTER_CMD=""
     declare -g OPT_KUBECONFIG=false
+    declare -g OPT_FORCE=false
 
-    # 
 }
 
 parse_opts() {
@@ -180,8 +184,8 @@ parse_opt_cluster() {
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'ocp-benchmark' \
-            -o hdcd \
-            --long debug,help,cluster-name:,cluster-profile:,kubeconfig, \
+            -o hdcdf \
+            --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force, \
             -- "$@"`
 
     if [ $? != 0 ] ; then
@@ -197,6 +201,7 @@ parse_opt_cluster() {
             --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
             --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
             --kubeconfig        ) OPT_KUBECONFIG=true; shift ;;
+            --force             ) OPT_FORCE=true; shift ;;
             -- ) shift; break ;;
             * ) echo "Option not found"; break ;;
         esac
@@ -217,7 +222,8 @@ parse_opt_cluster() {
     fi
 
     # Globals
-    declare -g CLUSTER_KUBECONFIG=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}/auth/kubeconfig
+    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}
+    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
 
     source $(dirname $0)/src/cluster
     installer_cluster_main
@@ -230,8 +236,10 @@ parse_cmds() {
     "list"              ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "report"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "run"               ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    "config"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
     *) echo "Command [${1:-}] not found"; show_help;;
     esac
 }
 
+test -f $(dirname $0)/.env && source $(dirname $0)/.env
 parse_cmds "$@"

@@ -4,6 +4,211 @@
 # Handle installer tasks
 #
 
+check_cluster_exists_to_create() {
+  if [[ -d ${CLUSTER_HOME} ]]; then
+    echo "Cluster directory [${CLUSTER_HOME}] already exists.";
+    if [[ ${OPT_FORCE:-} == false ]]; then
+        echo "--force flag was not found, exiting...";
+        exit 1
+    fi
+  fi
+}
+
+check_dependencies_to_create() {
+  if [[ ! -d ${CLUSTER_HOME} ]]; then
+    mkdir -p ${CLUSTER_HOME}
+  fi
+}
+
+render_runner_config() {
+
+  local rendered_config="${CLUSTER_HOME}_rendered-runner-config.yaml"
+  local platform_name="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.platform)"
+
+  # platform specifics
+  if [[ "${platform_name}" == "aws" ]]; then
+    vol_key="rootVolume"
+  elif [[ "${platform_name}" == "azure" ]]; then
+    vol_key="osDisk"
+  else
+    echo "Platform not found to render config, exiting..."
+    exit 1;
+  fi
+
+  # check baseDomain
+  local baseDomain_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.basedomain || true)"
+  local baseDomain_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.baseDomain)"
+  if [[ -z "${baseDomain_cluster}" ]] || [[ "${baseDomain_cluster}" == "null" ]]; then
+    baseDomain="${baseDomain_plat}"
+  else
+    baseDomain="${baseDomain_cluster}"
+  fi
+
+  # instance/vm type: control plane (cpl) and compute (comp)
+  local vm_cpl_type_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.controlPlane.type || true)"
+  local vm_cpl_type_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.controlPlane.type )"
+  if [[ -z "${vm_cpl_type_cluster}" ]] || [[ "${vm_cpl_type_cluster}" == "null" ]]; then
+    vm_type_cpl="${vm_cpl_type_plat}"
+  else
+    vm_type_cpl="${vm_cpl_type_cluster}"
+  fi
+
+  local vm_comp_type_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.compute.type || true)"
+  local vm_comp_type_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.compute.type )"
+  if [[ -z "${vm_comp_type_cluster}" ]] || [[ "${vm_comp_type_cluster}" == "null" ]]; then
+    vm_type_comp="${vm_comp_type_plat}"
+  else
+    vm_type_comp="${vm_comp_type_cluster}"
+  fi
+
+  # Vol types
+  local vol_cpl_type_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type || true)"
+  local vol_cpl_type_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.vol_type )"
+  if [[ -z "${vm_cpl_type_cluster}" ]] || [[ "${vm_cpl_type_cluster}" == "null" ]]; then
+    vol_type_cpl="${vol_cpl_type_plat}"
+    vol_size_cpl="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.vol_size )"
+  else
+    vol_type_cpl="${vol_cpl_type_cluster}"
+    vol_size_cpl="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_size)"
+  fi
+
+  # TODO: customize disk for cluster roles (master, worker, etc)
+  # local vol_comp_type_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type || true)"
+  # local vol_comp_type_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform}.vol_type )"
+  # if [[ -z "${vm_comp_type_cluster}" ]] || [[ "${vm_comp_type_cluster}" == "null" ]]; then
+  #   vol_type_comp="${vm_comp_type_plat}"
+  #   vol_size_cpl="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform}.vol_size )"
+  # else
+  #   vol_type_comp="${vm_comp_type_cluster}"
+  #   vol_size_comp="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_size)"
+  # fi
+
+  # Replica count
+  local rpl_count_cpl="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.controlPlane.replicas )"
+  local rpl_count_comp="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.controlPlane.replicas )"
+  if [[ -z "${rpl_count_cpl}" ]] || [[ "${rpl_count_cpl}" == "null" ]]; then
+    rpl_count_cpl=3
+  fi
+  if [[ -z "${rpl_count_comp}" ]] || [[ "${rpl_count_comp}" == "null" ]]; then
+    rpl_count_comp=3
+  fi
+
+  # Arch
+  local nodes_arch="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform_name}.architecture )"
+  if [[ -z "${nodes_arch}" ]] || [[ "${nodes_arch}" == "null" ]]; then
+    nodes_arch="amd64"
+  fi
+
+  # installer path
+  local bin_installer="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.installer || true)"
+  if [[ -z "${bin_installer}" ]] || [[ "${bin_installer}" == "null" ]]; then
+    echo "ERROR: {installer} not found on Cluster Profile section"
+    exit 1
+  fi
+  local bin_installer="${WORKDIR}/bin/${bin_installer}"
+  if [[ ! -x ${bin_installer} ]]; then
+    echo "ERROR: installer binary not found on path [${bin_installer}]"
+    exit 1
+  fi
+
+  cat << EOF > ${rendered_config}
+cluster_name: ${OPT_CLUSTER_NAME}
+baseDomain: ${baseDomain}
+
+# Platform specifics
+platform: ${platform_name}
+platform_options: $(yq -r .defaults.${platform_name}.platform ${GLOBAL_CONFIG} )
+vol_key: ${vol_key}
+
+nodes_architecture: ${nodes_arch}
+
+controlPlane_replicas_count: ${rpl_count_cpl}
+controlPlane_vm_type: ${vm_type_cpl}
+controlPlane_vol_type: ${vol_type_cpl}
+controlPlane_vol_size: ${vol_size_cpl}
+
+compute_replicas_count: ${rpl_count_comp}
+compute_vm_type: ${vm_type_comp}
+compute_vol_type: ${vol_type_cpl}
+compute_vol_size: ${vol_size_cpl}
+
+# Network
+net_type: $(yq -r .defaults.network.type ${GLOBAL_CONFIG} )
+net_cluster_cidr: $(yq -r .defaults.network.cluster_cidr ${GLOBAL_CONFIG} )
+net_cluster_prefix: $(yq -r .defaults.network.cluster_prefix ${GLOBAL_CONFIG} )
+net_machine_cidr: $(yq -r .defaults.network.machine_cidr ${GLOBAL_CONFIG} )
+net_service_cidr: $(yq -r .defaults.network.service_cidr ${GLOBAL_CONFIG} )
+
+# Paths / bins
+installer_path: ${bin_installer}
+EOF
+}
+
+create_install_config() {
+
+  # Check dependencies
+  if [[ -z ${PULL_SECRET} ]]; then
+    echo "Environment var is not defined: PULL_SECRET. Exiting...";
+    exit 1;
+  fi
+
+  if [[ -z ${SSH_PUB_KEYS} ]]; then
+    echo "Environment var is not defined: SSH_PUB_KEYS. Exiting...";
+    exit 1;
+  fi
+
+  # vars to render config
+  local icfg_path_base="${CLUSTER_HOME}_install-config.yaml"
+  local icfg_path_home="${CLUSTER_HOME}/install-config.yaml"
+  local rendered_config="${CLUSTER_HOME}_rendered-runner-config.yaml"
+
+  # render config
+  cat << EOF > ${icfg_path_base}
+apiVersion: v1
+baseDomain: $(yq . ${rendered_config} |jq -r .baseDomain)
+compute:
+- architecture: $(yq . ${rendered_config} |jq -r .nodes_architecture)
+  hyperthreading: Enabled
+  name: worker
+  platform:
+    $(yq . ${rendered_config} |jq -r .platform):
+      type: $(yq . ${rendered_config} |jq -r .compute_vm_type)
+      $(yq . ${rendered_config} |jq -r .vol_key):
+        size: $(yq . ${rendered_config} |jq -r .compute_vol_size)
+        type: $(yq . ${rendered_config} |jq -r .compute_vol_type)
+  replicas: $(yq . ${rendered_config} |jq -r .compute_replicas_count)
+controlPlane:
+  architecture: $(yq . ${rendered_config} |jq -r .nodes_architecture)
+  hyperthreading: Enabled
+  name: master
+  platform:
+    $(yq . ${rendered_config} |jq -r .platform):
+      type: $(yq . ${rendered_config} |jq -r .controlPlane_vm_type)
+      $(yq . ${rendered_config} |jq -r .vol_key):
+        size: $(yq . ${rendered_config} |jq -r .controlPlane_vol_size)
+        type: $(yq . ${rendered_config} |jq -r .controlPlane_vol_type)
+  replicas: $(yq . ${rendered_config} |jq -r .controlPlane_replicas_count)
+metadata:
+  name: $(yq . ${rendered_config} |jq -r .cluster_name)
+networking:
+  clusterNetwork:
+  - cidr: $(yq -r '.net_cluster_cidr' ${rendered_config})
+    hostPrefix: $(yq -r '.net_cluster_prefix' ${rendered_config})
+  machineNetwork:
+  - cidr: $(yq -r '.net_machine_cidr' ${rendered_config})
+  networkType: $(yq -r '.net_type' ${rendered_config})
+  serviceNetwork:
+  - $(yq -r '.net_service_cidr' ${rendered_config})
+platform:
+  $(yq . ${rendered_config} |jq -r .platform): $(yq . ${rendered_config} |jq -r .platform_options)
+publish: $(yq . ${rendered_config} |jq -r .publish)
+pullSecret: '${PULL_SECRET}'
+sshKey: |
+  ${SSH_PUB_KEYS}
+
+EOF
+  cp ${icfg_path_base} ${icfg_path_home}
+}
 
 #
 # Manifests Patchs
@@ -12,6 +217,7 @@
 # Patch Machine Manifest for AWS to add two block devices
 patch_machine_aws_2xDevBlocks() {
 
+  local rendered_config="${CLUSTER_HOME}_rendered-runner-config.yaml"
   local tmpdir=$(mktemp)
   rm -rf ${tmpdir}
   mkdir -p ${tmpdir}
@@ -30,16 +236,16 @@ patch_machine_aws_2xDevBlocks() {
           iops: 0
           kmsKey:
             arn: ""
-          volumeType: ${1:-"${DEFAULT_VOL_TYPE}"}
-          volumeSize: ${2:-"${DEFAULT_VOL_SIZE}"}
+          volumeType: $(yq . ${rendered_config} |jq -r .controlPlane_vol_type)
+          volumeSize: $(yq . ${rendered_config} |jq -r .controlPlane_vol_size)
       - deviceName: /dev/xvdb
         ebs:
           encrypted: true
           iops: 0
           kmsKey:
             arn: ""
-          volumeType: ${1:-"${DEFAULT_VOL_TYPE}"}
-          volumeSize: ${2:-"${DEFAULT_VOL_SIZE}"}
+          volumeType: $(yq . ${rendered_config} |jq -r .controlPlane_vol_type)
+          volumeSize: $(yq . ${rendered_config} |jq -r .controlPlane_vol_size)
 
 EOF
     # extract footer (post blockDevices
@@ -53,7 +259,6 @@ EOF
   done
   rm -rf ${tmpdir}
 }
-
 
 patch_machineConfig_aws_mount_etcd() {
 
@@ -98,76 +303,31 @@ spec:
 EOF
 }
 
+create_manifests() {
+  local rendered_config="${CLUSTER_HOME}_rendered-runner-config.yaml"
+  local bin_installer=$(yq -r .installer_path ${rendered_config})
+
+  rm -rf ${CLUSTER_HOME}/openshift ${CLUSTER_HOME}/manifests || true
+  ${bin_installer} --dir ${CLUSTER_HOME} create manifests
+}
+
+create_patchs_when_create() {
+  for patch in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.manifest_patchs[]?" ${GLOBAL_CONFIG}); do
+    echo "Looking for patch [${patch}]"
+    ${patch}
+  done
+}
+
+create_cluster() {
+  local rendered_config="${CLUSTER_HOME}_rendered-runner-config.yaml"
+  local bin_installer=$(yq -r .installer_path ${rendered_config})
+
+  ${bin_installer} --dir ${CLUSTER_HOME} create cluster
+}
+
 #
 # Install Config
 #
-
-create_install_config() {
-
-  # Check env 
-  if [[ -z ${PULL_SECRET} ]]; then
-    echo "Environment var is not defined: PULL_SECRET. Exiting...";
-    exit 1;
-  fi
-
-  if [[ -z ${SSH_PUB_KEYS} ]]; then
-    echo "Environment var is not defined: SSH_PUB_KEYS. Exiting...";
-    exit 1;
-  fi
-
-  VOL_TYPE="${1:-"${DEFAULT_VOL_TYPE}"}"
-  VOL_SIZE="${2:-"${DEFAULT_VOL_SIZE}"}"
-
-  local install_config="${CLUSTER_HOME}/install-config.yaml"
-  cat << EOF > ${install_config}
-apiVersion: v1
-baseDomain: ${CLUSTER_CONF_BASE_DOMAIN}
-compute:
-- architecture: amd64
-  hyperthreading: Enabled
-  name: worker
-  platform:
-    ${CLUSTER_CONF_PLATFORM_NAME}:
-      type: ${EC2_SIZE_WORKER}
-      rootVolume:
-        size: ${2:-"${DEFAULT_VOL_SIZE}"}
-        type: ${1:-"${DEFAULT_VOL_TYPE}"}
-  replicas: 3
-controlPlane:
-  architecture: amd64
-  hyperthreading: Enabled
-  name: master
-  platform:
-    ${CLUSTER_CONF_PLATFORM_NAME}:
-      type: ${EC2_SIZE_MASTER}
-      rootVolume:
-        size: ${2:-"${DEFAULT_VOL_SIZE}"}
-        type: ${1:-"${DEFAULT_VOL_TYPE}"}
-  replicas: 3
-metadata:
-  name: ${CLUSTER_NAME}
-networking:
-  clusterNetwork:
-  - cidr: 10.128.0.0/14
-    hostPrefix: 23
-  machineNetwork:
-  - cidr: 10.0.0.0/16
-  networkType: OpenShiftSDN
-  serviceNetwork:
-  - 172.30.0.0/16
-platform:
-  ${CLUSTER_CONF_PLATFORM_NAME}:
-    region: ${CLUSTER_CONF_PLATFORM_REGION}
-    ${CLUSTER_CONF_PLATFORM_EXTRA_CONF:-""}
-publish: External
-pullSecret: '${PULL_SECRET}'
-sshKey: |
-  ${SSH_PUB_KEYS}
-
-EOF
-
-}
-
 
 create_kubeconfig() {
     local auth_dir=$(dirname ${CLUSTER_KUBECONFIG})
@@ -177,34 +337,68 @@ create_kubeconfig() {
     exit 0
 }
 
-# [cluster] sub command handler
-cluster_main() {
-    echo "=${OPT_KUBECONFIG}"
+# installer steps (avoid duplicate on installer options)
+# setup   : only setup
+# install : only install
+# create  : setup + install
 
-    case ${OPT_CLUSTER_CMD} in
-        "create") 
-            if [[ ${OPT_KUBECONFIG:-} == true ]]; then
-                create_kubeconfig
-                return
-            fi
-            check_cluster_exists_to_create
-            check_dependencies
-            create_install_config
-            create_manifests
-            apply_manifests_patchs
-            if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
-                return
-            fi
-            if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
-                create_ignition_files
-                return
-            fi
-            create_cluster
-        ;;
-        "destroy")
-            backup_cluster_installdir
-            check_cluster_exists_to_destroy
-            destroy_cluster
-        ;;
-    esac
+installer_step_setup() {
+    if [[ ${OPT_KUBECONFIG:-} == true ]]; then
+        create_kubeconfig
+        return
+    fi
+    check_cluster_exists_to_create
+
+    render_runner_config
+
+    check_dependencies_to_create
+    create_install_config
+    create_manifests
+    create_patchs_when_create
+    if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
+        return
+    fi
+    if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
+        create_ignition_files
+        return
+    fi
+}
+
+installer_step_install() {
+  create_cluster
+}
+
+installer_step_create() {
+  installer_step_setup
+  installer_step_install
+}
+
+# [cluster] sub command handler
+installer_cluster_main() {
+
+  case ${OPT_CLUSTER_CMD} in
+      "install")
+          installer_step_install
+      ;;
+      "setup")
+          installer_step_setup
+      ;;
+      # ocp installer: create a cluster
+      "create")
+          installer_step_create
+      ;;
+
+      # ocp installer: destroy a cluster
+      "destroy")
+          backup_cluster_installdir
+          check_cluster_exists_to_destroy
+          destroy_cluster
+      ;;
+      # send a ping (get nodes/version/etc) to validate if created cluster is live
+      "ping")
+          backup_cluster_installdir
+          check_cluster_exists_to_destroy
+          destroy_cluster
+      ;;
+  esac
 }
