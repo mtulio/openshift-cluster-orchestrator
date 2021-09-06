@@ -224,6 +224,7 @@ parse_opt_cluster() {
     # Globals
     declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}
     declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
+    declare -g CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
 
     source $(dirname $0)/src/cluster
     installer_cluster_main
