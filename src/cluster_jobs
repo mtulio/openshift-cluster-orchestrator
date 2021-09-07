@@ -1,0 +1,89 @@
+#!/bin/sh
+
+# run_$job_name
+
+#
+# FIO etcd
+#
+task_fio_etcd_defaults() {
+
+  local node_name="${1}"
+  local log_stdout=${result_path_base}/fio_etcd-${OPT_JOB_NAME}-${node_name}.txt
+
+  echo "RUNNING job fio_etcd_defaults() on node ${node_name}"
+
+  # Run etcd-fio (right after all FIO burn)
+  ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
+    "podman run \
+      --volume /var/lib/etcd:/var/lib/etcd:Z \
+      quay.io/openshift-scale/etcd-perf" > ${log_stdout} ;
+}
+
+#
+# FIO
+#
+run_fio() {
+
+  local node_name="${1}"
+  local log_stdout=${result_path_base}/fio_stdout-${OPT_JOB_NAME}-${node_name}.txt
+
+  local task_base_dir=$(yq -r ".task_profiles.${task_name}.base_dir" ${GLOBAL_CONFIG})
+  local task_loop=$(yq -r ".task_profiles.${task_name}.loop" ${GLOBAL_CONFIG})
+  
+  echo "#> Running FIO on node [${node_name}], registering on log file ${log_stdout}"
+  ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
+    "hostname; lsblk" 2>/dev/null |tee -a ${log_stdout}
+
+  echo "Running as user [$($oc_cmd whoami)], API [$($oc_cmd whoami --show-server)] and node [${node_name}]" |tee -a ${log_stdout}
+  ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
+    "echo \"[0] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
+    TEST_DIR=\"${task_base_dir}\"; \
+    mkdir -p \${TEST_DIR}; \
+    for offset in {1..${task_loop}} ; do \
+        podman run --rm \
+            -v \${TEST_DIR}:\${TEST_DIR}:Z \
+            ljishen/fio \
+                $(yq -r ".task_profiles.${task_name}.commands" ${GLOBAL_CONFIG})
+                --directory=\"\${TEST_DIR}\" \
+                --name=\"fio_io_\${offset}\" \
+                --output-format=json \
+                --output=\"\${TEST_DIR}/result_\${offset}.json\" ;\
+        sleep 10; \
+        rm -f \${TEST_DIR}/fio_io_\${offset}* ||true ; \
+        echo \"[\$offset] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
+    done; \
+    tar cfz \${TEST_DIR}_results.tar.gz \${TEST_DIR}*/*.json" \
+      2>/dev/null | tee -a ${log_stdout}
+
+  # collect results
+  ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
+    "cat ${task_base_dir}_results.tar.gz" \
+    2>/dev/null > ${result_path_base}/fio-${OPT_JOB_NAME}-${node_name}.tar.gz
+}
+
+task_fio_libaio_rw() {
+  run_fio "$@"
+}
+
+task_aws_fio_randrw() {
+  run_fio "$@"
+}
+
+#
+# Prometheus
+#
+
+task_prometheus_dump() {
+  # Prometheus DB
+  echo "#> Waiting 5m to collect PrometheusDB..."
+  sleep 300
+
+  local dump_dir=${result_path_base}/prometheus_dump-${OPT_JOB_NAME}
+  mkdir -p ${dump_dir}
+
+  ${oc_cmd} rsync -c prometheus -n openshift-monitoring \
+    pod/prometheus-k8s-0:/prometheus/ ${dump_dir} || true
+
+  tar cfJ ${dump_dir}.tar.xz ${dump_dir}
+  test -f ${dump_dir}.tar.xz && rm -rf ${dump_dir} 
+}

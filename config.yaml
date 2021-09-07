@@ -108,9 +108,9 @@ cluster_profiles:
     vol_size: 64
 
 #
-# Benchmark configuration
+# Task profiles
 #
-benchmark_profiles:
+task_profiles:
   # FIO write test
   fio_defaults:
     image: ljishen/fio
@@ -129,21 +129,36 @@ benchmark_profiles:
 
   # AWS Doc (init ebs)
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
-  fio_read_libaio:
+  fio_libaio_rw:
     image: ljishen/fio
-    base_dir: "/var/lib/etcd/"
-    loop: 50
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 5
     commands: |
-      --rw=write \
+      --rw=rw \
       --ioengine=libaio \
       --bs=16k \
-      --iodepth=32 \
-      --direct=1
-      --size=1.6g \
-      --directory=\"\$TEST_DIR\" \
-      --name=\"fio_io_\${l}\${i}\" \
-      --output-format=json \
-      --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;
+      --iodepth=16 \
+      --direct=1 \
+      --fdatasync=1 \
+      --size=3276m \
+
+  # AWS Docs
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
+  aws_fio_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 10
+    commands: |
+      --rw=randrw \
+      --ioengine=psync \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
 
   # FIO embeeded on etcd-perf image
   fio_etcd_defaults:
@@ -151,51 +166,24 @@ benchmark_profiles:
     base_dir: "/var/lib/etcd/"
     loop: 1
 
-#
-# Create runner setup (step before run)
-# runner-profile = cluster_profile + benchmark_profile
-#
-runner_profiles:
-  b1_t1:
-    cluster_profile: aws_m5x1xgp2
-    benchmark_profiles:
-      - fio_defaults
-      - fio_etcd_defaults
-    # 0 : first node on index list
-    # * : all nodes found on label list
+benchmark_profiles:
+  # RUN jobs on one control plane
+  fio_etcd_one_cp:
+    task_profiles:
+      #- fio_libaio_rw
+      #- fio_etcd_defaults
+      - aws_fio_randrw
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: 0
 
-  b1_t2:
-    cluster_profile: aws_m5x2xgp2
-    benchmark_profiles:
-      - fio_defaults
-      - fio_etcd_defaults
+  # run jobs on all control plane
+  fio_etcd_all_cp:
+    task_profiles:
+      #- fio_libaio_rw
+      #- fio_etcd_defaults
+      - aws_fio_randrw
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
-      index: 0
-
-  b1_t3:
-    cluster_profile: aws_m5x1xgp3
-    benchmark_profiles:
-      - fio_defaults
-      - fio_etcd_defaults
-    target_node_strategy:
-      filter_by_label: node-role.kubernetes.io/master=
-      index: 0
-  
-  b1_t4:
-    profile: aws_m5x2xgp3
-    benchmark_profiles:
-      - fio_defaults
-      - fio_etcd_defaults
-    target_node_strategy:
-      filter_by_label: node-role.kubernetes.io/master=
-      index: 0
-
-
-# Start to run the benchmark tests to a cluster (defined on runner-profile)
-runner:
-  - b1_t1
-  - b1_t2
+      index: '*'
+    parallel_nodes: yes

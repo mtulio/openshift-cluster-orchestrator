@@ -152,6 +152,7 @@ net_service_cidr: $(yq -r .defaults.network.service_cidr ${GLOBAL_CONFIG} )
 
 # Paths / bins
 installer_path: ${bin_installer}
+oc_path: ${bin_oc}
 EOF
   test -f ${CFG_RENDERED} && (
     echo "Rendered configuration saved [${CFG_RENDERED}]"

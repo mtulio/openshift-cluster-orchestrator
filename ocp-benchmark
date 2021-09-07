@@ -66,19 +66,19 @@ Examples:
         --cluster-profile aws_m5x1xgp2 \\
         --cluster-name c1 \\
         --run \\
-        --runner-id b1-c1 \\
+        --job-name b1-c1 \\
         --benchmark-profile fio_defaults \\
         --dump-prometheus
 
     # Start running the test
     ${0} run \\
-        --runner-id b1-c1 \\
+        --job-name b1-c1 \\
         --cluster-name c1 \\
         --benchmark-profile fio_defaults \\
         --dump-prometheus
 
     ${0} run \\
-        --runner-id b1-c2 \\
+        --job-name b1-c2 \\
         --cluster-name c2 \\
         --benchmark-profile fio_defaults \\
         --dump-prometheus
@@ -114,17 +114,21 @@ cmd_report() {
 }
 
 cmd_run() {
-    echo "[run] command not implemented. Exiting..."
+    #echo "[run] command not implemented. Exiting..."
+    source $(dirname $0)/src/cmd_run
+    cmd_run_main
 }
 
-set_defaults() {
+set_globals_init() {
 
     # Global config
     declare -g GLOBAL_CONFIG="${PWD}/config.yaml"
 
     # Workdir
-    declare -g WORKDIR="${PWD}/$(yq . ${GLOBAL_CONFIG} |jq -r .config.workdir)"
-    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq . ${GLOBAL_CONFIG} |jq -r .config.workdir)/clusters"
+    declare -g WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
+    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
+    declare -g WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
+    declare -g WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
 
     # Installer options
     declare -g OPT_CLUSTER_CMD=""
@@ -133,14 +137,21 @@ set_defaults() {
 
 }
 
+# Set globals with arg parsed
+set_globals_argparsed() {
+    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}
+    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
+    declare -g CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
+}
+
 parse_opts() {
 
     CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=`getopt -n 'gather-monitoring-data' \
+    GETOPT_SET=`getopt -n 'ocp-benchmark' \
             -o hd \
-            --long debug,help,run,dump-prometheus,cluster-name:,cluster-profile:,test-id:,benchmark-profile:,kubeconfig:, \
+            --long debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:, \
             -- "$@"`
 
     if [ $? != 0 ] ; then
@@ -149,32 +160,35 @@ parse_opts() {
     fi
     eval set -- "${GETOPT_SET}"
 
-    set_defaults
+    set_globals_init
     while true; do
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
             -d | --debug        ) OPT_DEBUG=true; shift ;;
-            --battery-id        ) OPT_GATHER_QUERY="$2"; shift 2 ;;
-            --test-id           ) OPT_GATHER_QUERY_RANGE="$2"; shift 2 ;;
-            --cluster-name      ) OPT_CLUSTER_NAME=$1 ; shift 2 ;;
-            --cluster-profile   ) OPT_GATHER_QUERY="$2"; shift 2 ;;
-            --benchmark-profile ) OPT_GATHER_QUERY="$2"; shift 2 ;;
+            --job-name          ) OPT_JOB_NAME="$2"; shift 2 ;;
+            --job-group         ) OPT_JOB_GROUP="$2"; shift 2 ;;
+            --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
+            --benchmark-profile ) OPT_BENCH_PROFILE="$2"; shift 2 ;;
             -- ) shift; break ;;
             * ) echo "Option not found"; break ;;
         esac
     done
+    # Validations
+    if [[ -z ${OPT_JOB_NAME:-} ]]; then
+        echo "ERROR: missing flag --job-name {name}";
+        exit 1
+    fi
+
+    set_globals_argparsed
 
     case ${OPT_CMD} in
-        "install"   ) cmd_install ;;
-        "list"      ) cmd_list ;;
-        "report"    ) cmd_report ;;
         "run"       ) cmd_run ;;
     esac
 }
 
 parse_opt_cluster() {
 
-    set_defaults
+    set_globals_init
     case ${1} in
         "create"|"destroy"|"setup"|"install"|"delete"|"ping") OPT_CLUSTER_CMD="${1}"; shift ;;
         * ) echo "Create target was not found. Use one of: create|destroy"; exit 1 ;;
@@ -220,12 +234,7 @@ parse_opt_cluster() {
         fi
         echo "Using KUBECONFIG=${KUBECONFIG}"
     fi
-
-    # Globals
-    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}
-    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
-    declare -g CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
-
+    set_globals_argparsed
     source $(dirname $0)/src/cmd_cluster
     cmd_cluster_main
 }
@@ -233,10 +242,10 @@ parse_opt_cluster() {
 parse_cmds() {
     case ${1:-""} in
     "cluster"|"c"       ) OPT_CMD="$1"; shift; parse_opt_cluster "$@";;
+    "run"               ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "dependencies"|"d"  ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "list"              ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "report"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
-    "run"               ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "config"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
     *) echo "Command [${1:-}] not found"; show_help;;
     esac
