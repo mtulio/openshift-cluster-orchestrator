@@ -176,7 +176,7 @@ parse_opt_cluster() {
 
     set_defaults
     case ${1} in
-        "create"|"destroy") OPT_CLUSTER_CMD="${1}"; shift ;;
+        "create"|"destroy"|"setup"|"install"|"delete"|"ping") OPT_CLUSTER_CMD="${1}"; shift ;;
         * ) echo "Create target was not found. Use one of: create|destroy"; exit 1 ;;
     esac
 
@@ -226,8 +226,8 @@ parse_opt_cluster() {
     declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
     declare -g CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
 
-    source $(dirname $0)/src/cluster
-    installer_cluster_main
+    source $(dirname $0)/src/cmd_cluster
+    cmd_cluster_main
 }
 
 parse_cmds() {

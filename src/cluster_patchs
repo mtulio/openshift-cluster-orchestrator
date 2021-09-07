@@ -1,0 +1,93 @@
+#!/bin/sh
+
+#
+# Manifests Patchs
+#
+
+# Patch Machine Manifest for AWS to add two block devices
+patch_machine_aws_2xDevBlocks() {
+
+  local tmpdir=$(mktemp)
+  rm -rf ${tmpdir}
+  mkdir -p ${tmpdir}
+
+  for machine_manifest in $(ls ${CLUSTER_HOME}/openshift/99_openshift-cluster-api_master-machines-*.yaml); do 
+    
+    local machine_file=$(basename ${machine_manifest})
+    
+    # extract header (pre blockDevices)
+    sed '1,/blockDevices/!d' ${machine_manifest} > ${tmpdir}/${machine_file}_00
+
+    # duplicate device list block
+    cat << EOF > ${tmpdir}/${machine_file}_01-devs
+      - ebs:
+          encrypted: true
+          iops: 0
+          kmsKey:
+            arn: ""
+          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
+          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
+      - deviceName: /dev/xvdb
+        ebs:
+          encrypted: true
+          iops: 0
+          kmsKey:
+            arn: ""
+          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
+          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
+
+EOF
+    # extract footer (post blockDevices
+    grep credentialsSecret -A 999 ${machine_manifest} > ${tmpdir}/${machine_file}_03
+
+    # join files
+    cat ${tmpdir}/${machine_file}_* > ${tmpdir}/${machine_file}
+
+    echo "Aggregated file created on ${tmpdir}/${machine_file} , overwriting to ${machine_manifest}"
+    cp ${tmpdir}/${machine_file} ${machine_manifest}
+  done
+  rm -rf ${tmpdir}
+}
+
+patch_machineConfig_aws_mount_etcd() {
+
+  # https://docs.fedoraproject.org/en-US/fedora-coreos/storage/
+  # https://coreos.github.io/butane/examples/#mirrored-boot-disk
+  
+  cat << EOF > ${CLUSTER_HOME}/openshift/99_openshift-machineconfig_00-master-etcd.yaml
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: master
+  name: 00-master-etcd
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      disks:
+      - device: /dev/nvme1n1
+        wipe_table: true
+        partitions:
+        - size_mib: 0
+          label: etcd
+      filesystems:
+        - path: /var/lib/etcd
+          device: /dev/disk/by-partlabel/etcd
+          format: xfs
+          wipe_filesystem: true
+    systemd:
+      units:
+        - name: var-lib-etcd.mount
+          enabled: true
+          contents: |
+            [Unit]
+            Before=local-fs.target
+            [Mount]
+            Where=/var/lib/etcd
+            What=/dev/disk/by-partlabel/etcd
+            [Install]
+            WantedBy=local-fs.target
+EOF
+}

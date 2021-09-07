@@ -1,0 +1,157 @@
+#!/bin/sh
+
+#
+# Handle installer tasks
+#
+
+cluster_check_exists_to_create() {
+  if [[ -d ${CLUSTER_HOME} ]]; then
+    echo "Cluster directory [${CLUSTER_HOME}] already exists.";
+    if [[ ${OPT_FORCE:-} == false ]]; then
+        echo "--force flag was not found, exiting...";
+        exit 1
+    fi
+  fi
+}
+
+# Check cluster dir exists to delete
+cluster_check_exists_to_destroy() {
+  if [[ ! -d ${CLUSTER_HOME} ]]; then
+    echo "Cluster directory [${CLUSTER_HOME}] does not exists.";
+    exit 1
+  fi
+}
+
+cluster_check_deps_to_create() {
+  if [[ ! -d ${CLUSTER_HOME} ]]; then
+    mkdir -p ${CLUSTER_HOME}
+  fi
+}
+
+cluster_backup_installdir() {
+  local ts=$(date +%Y%m%d%H%M%S)
+
+  echo "Backing up cluster install dir [${CLUSTER_HOME}] to [${CLUSTER_HOME}-${ts}.tar.xz]"
+  tar cfJ "${CLUSTER_HOME}-${ts}.tar.xz" ${CLUSTER_HOME}
+}
+
+cluster_destroy() {
+  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+
+  echo "Destroing cluster from install dir [${CLUSTER_HOME}]"
+  ${bin_installer} --dir ${CLUSTER_HOME} destroy cluster
+}
+
+cluster_create_manifests() {
+  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+
+  rm -rf ${CLUSTER_HOME}/openshift ${CLUSTER_HOME}/manifests || true
+  ${bin_installer} --dir ${CLUSTER_HOME} create manifests
+}
+
+cluster_create_patchs() {
+  source $(dirname $0)/src/cluster_patchs
+  for patch in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.manifest_patchs[]?" ${GLOBAL_CONFIG}); do
+    echo "Running patch [${patch}]"
+    ${patch}
+  done
+
+}
+
+cluster_create() {
+  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+
+  ${bin_installer} --dir ${CLUSTER_HOME} create cluster
+}
+
+cluster_ping() {
+  local bin_oc=$(yq -r .oc_path ${CFG_RENDERED})
+
+  echo "#> ClusterVersion"
+  ${bin_oc} --kubeconfig ${CLUSTER_KUBECONFIG} get clusterversion
+
+  echo "#> Infrastructures"
+  ${bin_oc} --kubeconfig ${CLUSTER_KUBECONFIG} get infrastructures -o yaml
+
+  echo "#> Nodes"
+  ${bin_oc} --kubeconfig ${CLUSTER_KUBECONFIG} get nodes
+}
+
+# Create a 'fake cluster' / link to a existing kubeconfig (valid to run tests only)
+cmd_cluster_create_kubeconfig() {
+    local auth_dir=$(dirname ${CLUSTER_KUBECONFIG})
+    test -d ${auth_dir} || echo "Creating auth dir: ${auth_dir}"
+    mkdir -p  ${auth_dir}
+    ln -svf ${KUBECONFIG} ${CLUSTER_KUBECONFIG}
+    exit 0
+}
+
+# installer steps (avoid duplicate on installer options)
+# setup   : only setup
+# install : only install
+# create  : setup + install
+
+cmd_cluster_setup() {
+  if [[ ${OPT_KUBECONFIG:-} == true ]]; then
+      cmd_cluster_create_kubeconfig
+      return
+  fi
+
+  cluster_check_exists_to_create
+  cluster_check_deps_to_create
+
+  cluster_config_rendering
+  
+  cluster_create_install_config
+  cluster_create_manifests
+  cluster_create_patchs
+  if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
+      return
+  fi
+  if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
+      cluster_create_ignition_files
+      return
+  fi
+}
+
+cmd_cluster_install() {
+  cluster_create
+}
+
+cmd_cluster_create() {
+  cmd_cluster_setup
+  cmd_cluster_install
+}
+
+# [cluster] sub command handler
+cmd_cluster_main() {
+
+  source $(dirname $0)/src/cluster_config
+
+  case ${OPT_CLUSTER_CMD} in
+      # setup a cluster: create all dependencies, but not provision
+      # OCP installer cmd: create manifests (or ignition-files)
+      "setup")
+          cmd_cluster_setup
+      ;;
+      # [re]Install a cluster previously created
+      "install")
+          cmd_cluster_install
+      ;;
+      # setup+install:
+      # OCP installer cmd: create cluster
+      "create")
+          cmd_cluster_create
+      ;;
+      # OCP installer cmd: destroy cluster
+      "destroy"|"delete")
+          cluster_backup_installdir
+          cluster_check_exists_to_destroy
+          cluster_destroy
+      ;;
+      # send a ping (get nodes/version/etc) to validate if created cluster is live
+      "ping")
+
+      ;;
+  esac
+}

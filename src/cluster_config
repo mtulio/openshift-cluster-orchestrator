@@ -1,49 +1,14 @@
 #!/bin/sh
 
 #
-# Handle installer tasks
+# Rendering the cluster variables based on config.yaml
 #
+cluster_config_rendering() {
 
-check_cluster_exists_to_create() {
-  if [[ -d ${CLUSTER_HOME} ]]; then
-    echo "Cluster directory [${CLUSTER_HOME}] already exists.";
-    if [[ ${OPT_FORCE:-} == false ]]; then
-        echo "--force flag was not found, exiting...";
-        exit 1
-    fi
-  fi
-}
-
-# Check cluster dir exists to delete
-check_cluster_exists_to_destroy() {
-  if [[ ! -d ${CLUSTER_HOME} ]]; then
-    echo "Cluster directory [${CLUSTER_HOME}] does not exists.";
-    exit 1
-  fi
-}
-
-check_dependencies_to_create() {
-  if [[ ! -d ${CLUSTER_HOME} ]]; then
-    mkdir -p ${CLUSTER_HOME}
-  fi
-}
-
-backup_cluster_installdir() {
-  tar cfJ "${CLUSTER_HOME}-$(date +%Y%m%d%H%M%S).tar.xz" ${CLUSTER_HOME}
-}
-
-destroy_cluster() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
-
-  ${bin_installer} --dir ${CLUSTER_HOME} destroy cluster
-}
-
-#
-#
-#
-render_runner_config() {
+  echo "Rendering configuration for cluster [${OPT_CLUSTER_NAME}] from profile [${OPT_CLUSTER_PROFILE}]"
 
   local platform_name="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.platform ${GLOBAL_CONFIG})"
+  echo "Found platform [${platform_name}] "
 
   # platform specifics
   if [[ "${platform_name}" == "aws" ]]; then
@@ -119,18 +84,44 @@ render_runner_config() {
     nodes_arch="amd64"
   fi
 
-  # installer path
+  # bin path: installer
   local bin_installer="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.installer ${GLOBAL_CONFIG} || true)"
   if [[ -z "${bin_installer}" ]] || [[ "${bin_installer}" == "null" ]]; then
     echo "ERROR: {installer} not found on Cluster Profile section"
-    exit 1
+    tmp_installer=$(command -v openshift-install)
+    if [[ -z "${tmp_installer}" ]]; then
+      echo "ERROR: {openshift-install} binary not found on your system. Install it and run again..."
+      exit 1
+    fi
+    bin_installer=${tmp_installer}
+  else # assuming a custom oc
+    bin_installer="${WORKDIR}/bin/${bin_installer}"
   fi
-  local bin_installer="${WORKDIR}/bin/${bin_installer}"
+  # check if is executable
   if [[ ! -x ${bin_installer} ]]; then
     echo "ERROR: installer binary not found on path [${bin_installer}]"
     exit 1
   fi
 
+  # bin path: oc
+  local bin_oc="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.oc ${GLOBAL_CONFIG} || true)"
+  if [[ -z "${bin_oc}" ]] || [[ "${bin_oc}" == "null" ]]; then
+    echo "WARN: {oc} not found on Cluster Profile section, looking on your system..."
+    tmp_oc=$(command -v oc)
+    if [[ -z "${tmp_oc}" ]]; then
+      echo "ERROR: {oc} binary not found on your system. Install it and run again..."
+      exit 1
+    fi
+    bin_oc=${tmp_oc}
+  else # assuming a custom oc
+    bin_oc="${WORKDIR}/bin/${bin_oc}"
+  fi
+  if [[ ! -x ${bin_oc} ]]; then
+    echo "ERROR: oc binary not found on path [${bin_oc}]"
+    exit 1
+  fi
+
+  # Rendering cluster variables
   cat << EOF > ${CFG_RENDERED}
 cluster_name: ${OPT_CLUSTER_NAME}
 baseDomain: ${baseDomain}
@@ -162,9 +153,14 @@ net_service_cidr: $(yq -r .defaults.network.service_cidr ${GLOBAL_CONFIG} )
 # Paths / bins
 installer_path: ${bin_installer}
 EOF
+  test -f ${CFG_RENDERED} && (
+    echo "Rendered configuration saved [${CFG_RENDERED}]"
+  ) || (
+    echo "ERROR to saved rendered configuration [${CFG_RENDERED}]"
+  )
 }
 
-create_install_config() {
+cluster_create_install_config() {
 
   # Check dependencies
   if [[ -z ${PULL_SECRET} ]]; then
@@ -227,191 +223,4 @@ sshKey: |
 
 EOF
   cp ${icfg_path_base} ${icfg_path_home}
-}
-
-#
-# Manifests Patchs
-#
-
-# Patch Machine Manifest for AWS to add two block devices
-patch_machine_aws_2xDevBlocks() {
-
-  local tmpdir=$(mktemp)
-  rm -rf ${tmpdir}
-  mkdir -p ${tmpdir}
-
-  for machine_manifest in $(ls ${CLUSTER_HOME}/openshift/99_openshift-cluster-api_master-machines-*.yaml); do 
-    
-    local machine_file=$(basename ${machine_manifest})
-    
-    # extract header (pre blockDevices)
-    sed '1,/blockDevices/!d' ${machine_manifest} > ${tmpdir}/${machine_file}_00
-
-    # duplicate device list block
-    cat << EOF > ${tmpdir}/${machine_file}_01-devs
-      - ebs:
-          encrypted: true
-          iops: 0
-          kmsKey:
-            arn: ""
-          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
-          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
-      - deviceName: /dev/xvdb
-        ebs:
-          encrypted: true
-          iops: 0
-          kmsKey:
-            arn: ""
-          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
-          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
-
-EOF
-    # extract footer (post blockDevices
-    grep credentialsSecret -A 999 ${machine_manifest} > ${tmpdir}/${machine_file}_03
-
-    # join files
-    cat ${tmpdir}/${machine_file}_* > ${tmpdir}/${machine_file}
-
-    echo "Aggregated file created on ${tmpdir}/${machine_file} , overwriting to ${machine_manifest}"
-    cp ${tmpdir}/${machine_file} ${machine_manifest}
-  done
-  rm -rf ${tmpdir}
-}
-
-patch_machineConfig_aws_mount_etcd() {
-
-  # https://docs.fedoraproject.org/en-US/fedora-coreos/storage/
-  # https://coreos.github.io/butane/examples/#mirrored-boot-disk
-  
-  cat << EOF > ${CLUSTER_HOME}/openshift/99_openshift-machineconfig_00-master-etcd.yaml
-apiVersion: machineconfiguration.openshift.io/v1
-kind: MachineConfig
-metadata:
-  labels:
-    machineconfiguration.openshift.io/role: master
-  name: 00-master-etcd
-spec:
-  config:
-    ignition:
-      version: 3.2.0
-    storage:
-      disks:
-      - device: /dev/nvme1n1
-        wipe_table: true
-        partitions:
-        - size_mib: 0
-          label: etcd
-      filesystems:
-        - path: /var/lib/etcd
-          device: /dev/disk/by-partlabel/etcd
-          format: xfs
-          wipe_filesystem: true
-    systemd:
-      units:
-        - name: var-lib-etcd.mount
-          enabled: true
-          contents: |
-            [Unit]
-            Before=local-fs.target
-            [Mount]
-            Where=/var/lib/etcd
-            What=/dev/disk/by-partlabel/etcd
-            [Install]
-            WantedBy=local-fs.target
-EOF
-}
-
-create_manifests() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
-
-  rm -rf ${CLUSTER_HOME}/openshift ${CLUSTER_HOME}/manifests || true
-  ${bin_installer} --dir ${CLUSTER_HOME} create manifests
-}
-
-create_patchs_when_create() {
-  for patch in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.manifest_patchs[]?" ${GLOBAL_CONFIG}); do
-    echo "Looking for patch [${patch}]"
-    ${patch}
-  done
-}
-
-create_cluster() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
-
-  ${bin_installer} --dir ${CLUSTER_HOME} create cluster
-}
-
-#
-# Install Config
-#
-
-create_kubeconfig() {
-    local auth_dir=$(dirname ${CLUSTER_KUBECONFIG})
-    test -d ${auth_dir} || echo "Creating auth dir: ${auth_dir}"
-    mkdir -p  ${auth_dir}
-    ln -svf ${KUBECONFIG} ${CLUSTER_KUBECONFIG}
-    exit 0
-}
-
-# installer steps (avoid duplicate on installer options)
-# setup   : only setup
-# install : only install
-# create  : setup + install
-
-installer_step_setup() {
-    if [[ ${OPT_KUBECONFIG:-} == true ]]; then
-        create_kubeconfig
-        return
-    fi
-    check_cluster_exists_to_create
-
-    render_runner_config
-
-    check_dependencies_to_create
-    create_install_config
-    create_manifests
-    create_patchs_when_create
-    if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
-        return
-    fi
-    if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
-        create_ignition_files
-        return
-    fi
-}
-
-installer_step_install() {
-  create_cluster
-}
-
-installer_step_create() {
-  installer_step_setup
-  installer_step_install
-}
-
-# [cluster] sub command handler
-installer_cluster_main() {
-
-  case ${OPT_CLUSTER_CMD} in
-      "install")
-          installer_step_install
-      ;;
-      "setup")
-          installer_step_setup
-      ;;
-      # ocp installer: create a cluster
-      "create")
-          installer_step_create
-      ;;
-      # ocp installer: destroy a cluster
-      "destroy"|"delete")
-          backup_cluster_installdir
-          check_cluster_exists_to_destroy
-          destroy_cluster
-      ;;
-      # send a ping (get nodes/version/etc) to validate if created cluster is live
-      "ping")
-          echo "TODO: run oc get nodes | whoami ..."
-      ;;
-  esac
 }
