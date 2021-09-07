@@ -25,16 +25,16 @@ patch_machine_aws_2xDevBlocks() {
           iops: 0
           kmsKey:
             arn: ""
-          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
-          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
+          volumeType: $(yq -r .controlPlane_vol_type ${CLUSTER_CFG_RENDERED} )
+          volumeSize: $(yq -r .controlPlane_vol_size ${CLUSTER_CFG_RENDERED} )
       - deviceName: /dev/xvdb
         ebs:
           encrypted: true
           iops: 0
           kmsKey:
             arn: ""
-          volumeType: $(yq -r .controlPlane_vol_type ${CFG_RENDERED} )
-          volumeSize: $(yq -r .controlPlane_vol_size ${CFG_RENDERED} )
+          volumeType: $(yq -r .controlPlane_vol_type ${CLUSTER_CFG_RENDERED} )
+          volumeSize: $(yq -r .controlPlane_vol_size ${CLUSTER_CFG_RENDERED} )
 
 EOF
     # extract footer (post blockDevices

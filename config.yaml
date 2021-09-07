@@ -142,12 +142,13 @@ task_profiles:
       --fdatasync=1 \
       --size=3276m \
 
-  # AWS Docs
+  #> AWS Docs
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
+  # TODO: how to Disable C-states in RHCOS
   aws_fio_randrw:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/_benchmark"
-    loop: 10
+    loop: 5
     commands: |
       --rw=randrw \
       --ioengine=psync \
@@ -160,6 +161,50 @@ task_profiles:
       --group_reporting \
       --norandommap \
 
+  aws_fio_randwrite:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 5
+    commands: |
+      --rw=randwrite \
+      --ioengine=psync \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  #? randread uses default ioengine (on example)
+  aws_fio_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 5
+    commands: |
+      --rw=randread \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
+  aws_ebs_initialize:
+    image: ljishen/fio
+    commands: |
+      --filename=/dev/nvme0n1 \
+      --rw=read \
+      --bs=128k \
+      --iodepth=32 \
+      --ioengine=libaio \
+      --direct=1 \
+      --name=volume-initialize
+
   # FIO embeeded on etcd-perf image
   fio_etcd_defaults:
     image: quay.io/openshift-scale/etcd-perf
@@ -170,6 +215,7 @@ benchmark_profiles:
   # RUN jobs on one control plane
   fio_etcd_one_cp:
     task_profiles:
+      #- aws_ebs_initialize
       #- fio_libaio_rw
       #- fio_etcd_defaults
       - aws_fio_randrw
@@ -180,6 +226,7 @@ benchmark_profiles:
   # run jobs on all control plane
   fio_etcd_all_cp:
     task_profiles:
+      #- aws_ebs_initialize
       #- fio_libaio_rw
       #- fio_etcd_defaults
       - aws_fio_randrw

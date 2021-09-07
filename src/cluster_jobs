@@ -69,6 +69,23 @@ task_aws_fio_randrw() {
   run_fio "$@"
 }
 
+task_aws_fio_randread() {
+  run_fio "$@"
+}
+
+task_aws_fio_randwrite() {
+  run_fio "$@"
+}
+
+task_aws_ebs_initialize() {
+    ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
+        "echo \"[0] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
+        podman run --rm \
+            ljishen/fio $(yq -r ".task_profiles.${task_name}.commands" ${GLOBAL_CONFIG}) ;
+        echo \"[\$offset] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
+        " 2>/dev/null
+    }
+
 #
 # Prometheus
 #

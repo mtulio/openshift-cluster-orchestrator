@@ -36,14 +36,14 @@ cluster_backup_installdir() {
 }
 
 cluster_destroy() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+  local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
   echo "Destroing cluster from install dir [${CLUSTER_HOME}]"
   ${bin_installer} --dir ${CLUSTER_HOME} destroy cluster
 }
 
 cluster_create_manifests() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+  local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
   rm -rf ${CLUSTER_HOME}/openshift ${CLUSTER_HOME}/manifests || true
   ${bin_installer} --dir ${CLUSTER_HOME} create manifests
@@ -58,13 +58,13 @@ cluster_create_patchs() {
 }
 
 cluster_create() {
-  local bin_installer=$(yq -r .installer_path ${CFG_RENDERED})
+  local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
   ${bin_installer} --dir ${CLUSTER_HOME} create cluster
 }
 
 cluster_ping() {
-  local bin_oc=$(yq -r .oc_path ${CFG_RENDERED})
+  local bin_oc=$(yq -r .oc_path ${CLUSTER_CFG_RENDERED})
 
   echo "#> ClusterVersion"
   ${bin_oc} --kubeconfig ${CLUSTER_KUBECONFIG} get clusterversion
