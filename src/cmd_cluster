@@ -55,7 +55,6 @@ cluster_create_patchs() {
     echo "Running patch [${patch}]"
     ${patch}
   done
-
 }
 
 cluster_create() {
@@ -151,7 +150,7 @@ cmd_cluster_main() {
       ;;
       # send a ping (get nodes/version/etc) to validate if created cluster is live
       "ping")
-
+        cluster_ping;
       ;;
   esac
 }
