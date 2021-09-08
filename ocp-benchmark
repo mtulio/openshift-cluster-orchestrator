@@ -33,8 +33,8 @@ Available commands:
 Global options:
     -h | --help             Show this help
     --cluster-name {name}   Name of cluster to be created. Should match with installation directory
-    --manifests             Create manifests only
-    --ignition              Create ignition files only
+    --only-manifests             Create manifests only
+    --only-ignitions              Create ignition files only
 
 Available options for 'list' (only):
 
@@ -199,7 +199,7 @@ parse_opt_cluster() {
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'ocp-benchmark' \
             -o hdcdf \
-            --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force, \
+            --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
             -- "$@"`
 
     if [ $? != 0 ] ; then
@@ -216,6 +216,8 @@ parse_opt_cluster() {
             --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
             --kubeconfig        ) OPT_KUBECONFIG=true; shift ;;
             --force             ) OPT_FORCE=true; shift ;;
+            --only-manifests    ) OPT_CLUSTER_MANIFESTS_ONLY=true; shift ;;
+            --only-ignitions    ) OPT_CLUSTER_IGNITION_ONLY=true; shift ;;
             -- ) shift; break ;;
             * ) echo "Option not found"; break ;;
         esac

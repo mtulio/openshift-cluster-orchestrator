@@ -105,11 +105,11 @@ cmd_cluster_setup() {
   cluster_create_manifests
   cluster_create_patchs
   if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
-      return
+      exit 0
   fi
   if [[ ${OPT_CLUSTER_IGNITION_ONLY:-} == true ]]; then
       cluster_create_ignition_files
-      return
+      exit 0
   fi
 }
 

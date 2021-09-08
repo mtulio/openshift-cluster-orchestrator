@@ -49,7 +49,7 @@ cluster_config_rendering() {
   # Vol types
   local vol_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type ${GLOBAL_CONFIG} || true)"
   local vol_cpl_type_plat="$(yq -r .defaults.${platform_name}.vol_type ${GLOBAL_CONFIG} )"
-  if [[ -z "${vm_cpl_type_cluster}" ]] || [[ "${vm_cpl_type_cluster}" == "null" ]]; then
+  if [[ -z "${vol_cpl_type_cluster}" ]] || [[ "${vol_cpl_type_cluster}" == "null" ]]; then
     vol_type_cpl="${vol_cpl_type_plat}"
     vol_size_cpl="$(yq -r .defaults.${platform_name}.vol_size ${GLOBAL_CONFIG} )"
   else

@@ -111,7 +111,14 @@ cluster_profiles:
 # Task profiles
 #
 task_profiles:
+  # FIO embeeded on etcd-perf image
+  fio_etcd_defaults:
+    image: quay.io/openshift-scale/etcd-perf
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+
   # FIO write test
+  # it will stress the volume to reach the burst
   fio_defaults:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/"
@@ -205,17 +212,94 @@ task_profiles:
       --direct=1 \
       --name=volume-initialize
 
-  # FIO embeeded on etcd-perf image
-  fio_etcd_defaults:
-    image: quay.io/openshift-scale/etcd-perf
-    base_dir: "/var/lib/etcd/"
-    loop: 1
+  # TODO check> FIO bench comparasion st1, gp2 and gp3:
+  # https://gist.github.com/niwinz/138c9ce49f484b3b66ee5f061d7f999b
 
+  # TODO create those profiles:
+  # for each: TEST={read,write,randread,randwrite,randrw}
+  # params: fio --rw=TEST --direct=1 --ioengine=libaio --bs=16k --numjobs=8 --size=1G --group_reporting
+  fio_libaio_read:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=read \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_write:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=write \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randread \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randwrite:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randwrite \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randrw \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+
+#> Profiles
 benchmark_profiles:
   # RUN jobs on one control plane
   fio_etcd_one_cp:
     task_profiles:
-      #- aws_ebs_initialize
+      #- fio_libaio_read
       #- fio_libaio_rw
       #- fio_etcd_defaults
       - aws_fio_randrw
@@ -234,3 +318,15 @@ benchmark_profiles:
       filter_by_label: node-role.kubernetes.io/master=
       index: '*'
     parallel_nodes: yes
+
+  # ./ocp-benchmark run --cluster-name c1gp2x1 --job-name c3 --job-group b3 --benchmark-profile fio_test_all_nodes
+  fio_test_all_nodes:
+    task_profiles:
+      - fio_libaio_read
+      - fio_libaio_write
+      - fio_libaio_randread
+      - fio_libaio_randwrite
+      - fio_libaio_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'

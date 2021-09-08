@@ -58,7 +58,7 @@ run_fio() {
   # collect results
   ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
     "cat ${task_base_dir}_results.tar.gz" \
-    2>/dev/null > ${result_path_base}/fio-${OPT_JOB_NAME}-${node_name}.tar.gz
+    2>/dev/null > ${result_path_base}/${task_name}-${OPT_JOB_NAME}-${node_name}.tar.gz
 }
 
 task_fio_libaio_rw() {
@@ -74,6 +74,26 @@ task_aws_fio_randread() {
 }
 
 task_aws_fio_randwrite() {
+  run_fio "$@"
+}
+
+task_fio_libaio_read() {
+  run_fio "$@"
+}
+
+task_fio_libaio_write() {
+  run_fio "$@"
+}
+
+task_fio_libaio_randread() {
+  run_fio "$@"
+}
+
+task_fio_libaio_randwrite() {
+  run_fio "$@"
+}
+
+task_fio_libaio_randrw() {
   run_fio "$@"
 }
 
