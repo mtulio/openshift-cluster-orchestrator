@@ -89,11 +89,17 @@ cluster_profiles:
     name: aws_m5x1xgp3
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
     platform: aws
+    vol_type: gp3
+    vol_size: 128
   aws_m5x2xgp3:
     name: aws_m5x2xgp3
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
     vol_type: gp3
+    vol_size: 128
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
   aws_m5x1xgp3_64G:
     name: aws_m5x1xgp3
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
@@ -106,6 +112,9 @@ cluster_profiles:
     platform: aws
     vol_type: gp3
     vol_size: 64
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
 
 #
 # Task profiles
@@ -149,29 +158,13 @@ task_profiles:
       --fdatasync=1 \
       --size=3276m \
 
-  #> AWS Docs
+  #> AWS Docs / rec bench test
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
-  # TODO: how to Disable C-states in RHCOS
-  aws_fio_randrw:
+  # TODO: how to Disable C-states in RHCOS?
+  fio_psync_randwrite:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/_benchmark"
-    loop: 5
-    commands: |
-      --rw=randrw \
-      --ioengine=psync \
-      --bs=16k \
-      --direct=1 \
-      --size=1G \
-      --numjobs=16 \
-      --time_based \
-      --runtime=180 \
-      --group_reporting \
-      --norandommap \
-
-  aws_fio_randwrite:
-    image: ljishen/fio
-    base_dir: "/var/lib/etcd/_benchmark"
-    loop: 5
+    loop: 1
     commands: |
       --rw=randwrite \
       --ioengine=psync \
@@ -201,7 +194,7 @@ task_profiles:
       --norandommap \
 
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
-  aws_ebs_initialize:
+  fio_ebs_initialize:
     image: ljishen/fio
     commands: |
       --filename=/dev/nvme0n1 \
@@ -224,6 +217,7 @@ task_profiles:
     loop: 1
     commands: |
       --rw=read \
+      --ioengine=libaio \
       --bs=16k \
       --direct=1 \
       --size=1G \
@@ -239,6 +233,7 @@ task_profiles:
     loop: 1
     commands: |
       --rw=write \
+      --ioengine=libaio \
       --bs=16k \
       --direct=1 \
       --size=1G \
@@ -254,6 +249,7 @@ task_profiles:
     loop: 1
     commands: |
       --rw=randread \
+      --ioengine=libaio \
       --bs=16k \
       --direct=1 \
       --size=1G \
@@ -269,6 +265,7 @@ task_profiles:
     loop: 1
     commands: |
       --rw=randwrite \
+      --ioengine=libaio \
       --bs=16k \
       --direct=1 \
       --size=1G \
@@ -284,6 +281,7 @@ task_profiles:
     loop: 1
     commands: |
       --rw=randrw \
+      --ioengine=libaio \
       --bs=16k \
       --direct=1 \
       --size=1G \
@@ -292,7 +290,6 @@ task_profiles:
       --runtime=180 \
       --group_reporting \
       --norandommap \
-
 
 #> Profiles
 benchmark_profiles:
@@ -320,8 +317,10 @@ benchmark_profiles:
     parallel_nodes: yes
 
   # ./ocp-benchmark run --cluster-name c1gp2x1 --job-name c3 --job-group b3 --benchmark-profile fio_test_all_nodes
-  fio_test_all_nodes:
+  fio_allTasks_masterNodes:
     task_profiles:
+      - fio_ebs_initialize
+      - fio_psync_randwrite
       - fio_libaio_read
       - fio_libaio_write
       - fio_libaio_randread

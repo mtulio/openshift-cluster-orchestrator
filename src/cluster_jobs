@@ -29,12 +29,13 @@ run_fio() {
 
   local task_base_dir=$(yq -r ".task_profiles.${task_name}.base_dir" ${GLOBAL_CONFIG})
   local task_loop=$(yq -r ".task_profiles.${task_name}.loop" ${GLOBAL_CONFIG})
-  
-  echo "#> Running FIO on node [${node_name}], registering on log file ${log_stdout}"
-  ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
-    "hostname; lsblk" 2>/dev/null |tee -a ${log_stdout}
+  if [[ ! -s ${OPT_TASK_LOOP:-} ]]; then
+    task_loop=${OPT_TASK_LOOP}
+  fi
 
-  echo "Running as user [$($oc_cmd whoami)], API [$($oc_cmd whoami --show-server)] and node [${node_name}]" |tee -a ${log_stdout}
+  echo "#cluster=${OPT_CLUSTER_NAME}> Running task [${task_name}] on node [${node_name}], registering on log file ${log_stdout}" |tee -a ${log_stdout}
+  
+  set -x
   ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
     "echo \"[0] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
     TEST_DIR=\"${task_base_dir}\"; \
@@ -59,6 +60,8 @@ run_fio() {
   ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
     "cat ${task_base_dir}_results.tar.gz" \
     2>/dev/null > ${result_path_base}/${task_name}-${OPT_JOB_NAME}-${node_name}.tar.gz
+
+  set +x
 }
 
 task_fio_libaio_rw() {
@@ -97,7 +100,12 @@ task_fio_libaio_randrw() {
   run_fio "$@"
 }
 
-task_aws_ebs_initialize() {
+task_fio_psync_randwrite() {
+  run_fio "$@"
+}
+
+task_fio_ebs_initialize() {
+    local node_name="${1}"
     ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
         "echo \"[0] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
         podman run --rm \
