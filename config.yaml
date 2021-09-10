@@ -316,7 +316,7 @@ benchmark_profiles:
       index: '*'
     parallel_nodes: yes
 
-  # ./ocp-benchmark run --cluster-name c1gp2x1 --job-name c3 --job-group b3 --benchmark-profile fio_test_all_nodes
+  # Run all fio tasks on all master nodes
   fio_allTasks_masterNodes:
     task_profiles:
       - fio_ebs_initialize
