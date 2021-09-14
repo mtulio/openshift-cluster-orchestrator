@@ -41,25 +41,35 @@ Available options for 'list' (only):
     --items           List all current items.
     --item {name}     Item to list: cluster-profiles, benchmark-profiles, clusters?, results?
 
-Available options for 'cluster' (only):
+Available commands for 'cluster':
 
-    (create|destroy)    Actions to take on cluster: Create or destroy is available.
+    setup
+    install
+    create
+    destroy|delete
+    ping
+    link|kubeconfig
+
+Available options for 'cluster':
+
     --cluster-profile   {name}      Tell profile to provision the cluster
-    --run               {run_opt}   Create a cluster and run the tests (depends on run flags)
     --kubeconfig        {path}      Creeate a like to your kubeconfig on .local/{cluster-name}/auth/kubeconfig
+
 
 Available options for 'run' (only):
 
-    --test-id           {name}  Runner unique identifier.
+    --job-name          {name}  Create a job to run on a cluster
+    --job-group         {name}  Group the results into a directorey {job_group}
+    --task-loop         {int}   Number of loop to run each task
     --cluster-name      {name}  Cluster name to lookup the kubeconfig: .local/{cluster-name}/auth/kubeconfig
-    --benchmark-profile {name}  Benchmark to run the test.
+    --benchmark-profile {name}  Job definition to run the test. Contains the group of tasks and selector.
     --dump-prometheus           Dump Prometheus DB to .local/results/{runner-id}/prometheus-db
 
 Examples:
     # Create a cluster
     ${0} create \\
         --cluster-profile aws_m5x1xgp2 \\
-        --cluster-name aws_m5x1xgp2
+        --cluster-name m5x1xgp2
 
     # Create a cluster and run the test
     ${0} create \\
@@ -83,41 +93,15 @@ Examples:
         --benchmark-profile fio_defaults \\
         --dump-prometheus
 
-    #> Results will be saved on .local/results/{runner-id}
+    #> The results will be saved on .local/results/(|byGroup-{job_name})
 
 EOF
 
 }
 
 #
-# sub commands:
-# - create
-# - destroy
-# - run
+# Globals
 #
-
-cmd_cluster() {
-    echo ${OPT_CLUSTER_CMD}
-    echo "[cluster] command not implemented. Exiting..."
-}
-
-cmd_install() {
-    echo "[install] command not implemented. Exiting..."
-}
-
-cmd_list() {
-    echo "[list] command not implemented. Exiting..."
-}
-
-cmd_report() {
-    echo "[report] command not implemented. Exiting..."
-}
-
-cmd_run() {
-    #echo "[run] command not implemented. Exiting..."
-    source $(dirname $0)/src/cmd_run
-    cmd_run_main
-}
 
 set_globals_init() {
 
@@ -139,10 +123,14 @@ set_globals_init() {
 
 # Set globals with arg parsed
 set_globals_argparsed() {
-    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME}
+    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
     declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
     declare -g CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
 }
+
+#
+# cli parsers
+#
 
 parse_opts() {
 
@@ -183,7 +171,14 @@ parse_opts() {
     set_globals_argparsed
 
     case ${OPT_CMD} in
-        "run"       ) cmd_run ;;
+        "run"    ) 
+            source $(dirname $0)/src/cmd_run;
+            cmd_run_main;
+        ;;
+        "report" )
+            source $(dirname $0)/src/cmd_report;
+            cmd_report_main;
+        ;;
     esac
 }
 
@@ -246,10 +241,10 @@ parse_cmds() {
     case ${1:-""} in
     "cluster"|"c"       ) OPT_CMD="$1"; shift; parse_opt_cluster "$@";;
     "run"               ) OPT_CMD="$1"; shift; parse_opts "$@";;
-    "dependencies"|"d"  ) OPT_CMD="$1"; shift; parse_opts "$@";;
-    "list"              ) OPT_CMD="$1"; shift; parse_opts "$@";;
     "report"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
-    "config"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"dependencies"|"d"  ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"list"              ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"config"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
     *) echo "Command [${1:-}] not found"; show_help;;
     esac
 }
