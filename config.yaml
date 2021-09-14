@@ -131,7 +131,7 @@ task_profiles:
   fio_defaults:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/"
-    loop: 100
+    loop: 10
     commands: |
       --rw=write \
       --ioengine=sync \
@@ -291,6 +291,77 @@ task_profiles:
       --group_reporting \
       --norandommap \
 
+  # FIO fsync
+  # https://fio.readthedocs.io/en/latest/fio_doc.html#i-o-engine
+  fio_sync_write:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=write \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --iodepth=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_read:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=read \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_rw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=rw \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=randrw \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
 #> Profiles
 benchmark_profiles:
   # RUN jobs on one control plane
@@ -323,9 +394,19 @@ benchmark_profiles:
       - fio_psync_randwrite
       - fio_libaio_read
       - fio_libaio_write
+      #- fio_libaio_rw
       - fio_libaio_randread
       - fio_libaio_randwrite
       - fio_libaio_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'
+
+  fio_fsync_masterNodes:
+    task_profiles:
+      - fio_sync_write
+      - fio_sync_read
+      - fio_sync_rw
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: '*'
