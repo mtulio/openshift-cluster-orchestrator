@@ -1,8 +1,11 @@
-# openshift-cluster-benchmark-lab
+# openshift-benchmark-orchestrator
 
-Tool to provisioning OCP cluster and run pre-build benchmark tests.
+Tool to orchestrate OCP cluster and run pre-built benchmark jobs, interacting with projects:
+- openshift-installer
+- FIO
+- benchmark-operator
 
-The configuration will be created dinamicaly with a pre-set of cluster profiles (customized), once the cluster is provisioned, it will  start a set of pre-defined tests and collect the results locally.
+The cluster configuration will be created dinamicaly with a pre-set of cluster profiles (customized), once the cluster is provisioned, it will  start a set of pre-defined tests and collect the results locally.
 
 The scripts run on top o openshift-installer using IPI method.
 
@@ -11,7 +14,6 @@ Use cases:
   * benchamark AWS disks gp2 and gp3, then compare with Azure disks
   * test different instance types with a custom Installer binary
 - help on daily tasks spining-up clusters configuration
-
 
 ## Usage
 
@@ -26,6 +28,8 @@ The variables must be set:
 - `SSH_PUB_KEYS` : ssh public keys to be added to cluster nodes
 - `PULL_SECRET`  : your pull secret
 - `OPENSHIFT_INSTALL_RELEASE_IMAGE_OVERRIDE` : (optional) if desired, override installer image release
+- `DEFAULT_BASEDOMAIN_AWS` : (optional) if set, the default baseDomain will be used for AWS provider (see config.yaml)
+- `DEFAULT_BASEDOMAIN_AZURE` : (optional) if set, the default baseDomain will be used for Azure provider (see config.yaml)
 
 ### `cluster` command
 

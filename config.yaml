@@ -35,7 +35,7 @@ dependencies:
     version: SPLAT-254s1v2
 
 #
-# OpenShift Installer Config | cluster
+# OpenShift Installer Config | defaults
 #
 defaults:
   network:
@@ -73,8 +73,16 @@ defaults:
       outboundType: Loadbalancer
       region: eastus
 
-# Cluster definition to provision
+# OpenShift Installer Config | cluster profiles
 cluster_profiles:
+  aws_default:
+    name: aws_default
+    platform: aws
+  azure_default:
+    name: azure_default
+    platform: azure
+
+  # Custom AWS profiles
   aws_m5x1xgp2:
     name: aws_m5x1xgp2
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
@@ -116,11 +124,6 @@ cluster_profiles:
     manifest_patchs:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
-
-  azure_default:
-    name: azure_default
-    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
-    platform: azure
 
 #
 # Task profiles
