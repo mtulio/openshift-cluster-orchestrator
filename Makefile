@@ -14,7 +14,7 @@ run-container:
 		-v $(PWD)/.local/results:/results:z \
 		-v $(PWD)/reports:/home/splat/notebooks:z \
 		-p 8080:8888 \
-		--env-file $(PWD)/.env \
+		--env-file $(PWD)/.env-container \
 		--name $(CONTAINER) \
 		-d $(PROJECT_IMAGE)
 	sleep 5
@@ -25,6 +25,11 @@ show-notebook:
 
 .PHONY: run
 run: run-container show-notebook 
+
+# Run notebook to create a custom html and nb converted
+.PHONY: report
+report:
+	hack/build-report-fio-tasks.sh
 
 .PHONY: clean
 clean:
