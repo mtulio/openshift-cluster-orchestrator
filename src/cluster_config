@@ -29,6 +29,11 @@ cluster_config_rendering() {
     baseDomain="${baseDomain_cluster}"
   fi
 
+  # Extracting domain from env var
+  if [[ "${baseDomain}" =~ "\$" ]]; then
+    baseDomain=$(env |grep $(printf $(echo ${baseDomain} |tr -d '${}')) |awk -F'=' '{print$2}')
+  fi
+
   # instance/vm type: control plane (cpl) and compute (comp)
   local vm_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.controlPlane.type ${GLOBAL_CONFIG} || true)"
   local vm_cpl_type_plat="$(yq -r .defaults.${platform_name}.controlPlane.type ${GLOBAL_CONFIG} )"
@@ -142,14 +147,27 @@ vol_key: ${vol_key}
 nodes_architecture: ${nodes_arch}
 
 controlPlane_replicas_count: ${rpl_count_cpl}
+compute_replicas_count: ${rpl_count_comp}
+
+EOF
+
+  if [[ "${controlPlane_vm_type:-null}" != 'null' ]]; then
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
 controlPlane_vm_type: ${vm_type_cpl}
 controlPlane_vol_type: ${vol_type_cpl}
 controlPlane_vol_size: ${vol_size_cpl}
+EOF
+  fi
 
-compute_replicas_count: ${rpl_count_comp}
+  if [[ "${compute_vm_type:-null}" == 'null' ]]; then
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
 compute_vm_type: ${vm_type_comp}
 compute_vol_type: ${vol_type_cpl}
 compute_vol_size: ${vol_size_cpl}
+EOF
+  fi
+
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
 
 # Network
 net_type: $(yq -r .defaults.network.type ${GLOBAL_CONFIG} )
