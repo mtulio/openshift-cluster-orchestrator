@@ -1,5 +1,19 @@
 #!/bin/sh
 
+declare -g RUN_PIDS=()
+
+function ctrl_c_handler() {
+  echo "#> CTRL+C handler detected! Killing process and it's childdrens: ${RUN_PIDS[@]}"
+  for parent_pid in ${RUN_PIDS[@]}; do
+    echo "Killing children's [${parent_pid}] process: $(pgrep -P ${parent_pid})"
+    kill -15 $(pgrep -P ${parent_pid}) || (echo "#>> Error killing children."; true; )
+    sleep 2;
+    echo "Killing parent [${parent_pid}]"
+    kill -15 ${parent_pid} || ( echo "#>> Error killing parent."; true; )
+  done
+}
+trap ctrl_c_handler SIGINT
+
 
 cmd_run_main() {
   source $(dirname $0)/src/cluster_jobs
@@ -16,7 +30,8 @@ cmd_run_main() {
   local node_index=$(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.target_node_strategy.index" ${GLOBAL_CONFIG})
   local job_stdout=${result_path_base}/job_stdout-${OPT_JOB_NAME}-${OPT_CLUSTER_NAME}.txt
   
-  mkdir -p ${result_path_base}
+  mkdir -p ${result_path_base};
+  chmod o+rw ${result_path_base}; # allow others (+scripts +containers/report)
 
   echo "#cluster=${OPT_CLUSTER_NAME}> Collecting cluster objects..." | tee -a ${job_stdout}
   local cluster_manifests_path=${result_path_base}/cluster-manifests-${OPT_CLUSTER_NAME}
@@ -34,15 +49,22 @@ cmd_run_main() {
     ${oc_cmd} debug node/${node} -- chroot /host /bin/bash -c \
       "hostname; lsblk" 2>/dev/null |tee -a ${job_stdout}
     (
+      
       for task_name in $(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.task_profiles[]?" ${GLOBAL_CONFIG}); do
-        task_${task_name} ${node}
+        sleep_interval=60
+        task_${task_name} ${node} || (
+          echo "#${node}> ERROR detected when running the task [${task_name}], starting next one..." | tee -a ${job_stdout};
+          sleep_interval=2;
+        )
+        echo "#${node}> Sleeping [${sleep_interval}]s to run next task" | tee -a ${job_stdout}
+        sleep ${sleep_interval}; # wait 60s to run the next task. TODO: add CLI and CFG opt for it
       done
     ) &
-    PIDS+=($!)
+    RUN_PIDS+=($!)
   done
 
   echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Waiting for tests to complete in all nodes..." | tee -a ${job_stdout}
-  wait "${PIDS[@]}"
+  wait "${RUN_PIDS[@]}"
   echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Done tests ran in all nodes" | tee -a ${job_stdout}
 
   task_prometheus_dump || true
