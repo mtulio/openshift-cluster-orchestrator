@@ -32,33 +32,34 @@ run_fio() {
   if [[ ! -s ${OPT_TASK_LOOP:-} ]]; then
     task_loop=${OPT_TASK_LOOP}
   fi
+  local task_benckmark_base_path="${task_base_dir}/_benchmark"
+  local task_results_file="${task_benckmark_base_path}_results.tar.gz"
 
   echo "#cluster=${OPT_CLUSTER_NAME}> Running task [${task_name}] on node [${node_name}], registering on log file ${log_stdout}" |tee -a ${log_stdout}
   
   set -x
   ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
     "echo \"[0] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
-    TEST_DIR=\"${task_base_dir}\"; \
-    mkdir -p \${TEST_DIR}; \
+    mkdir -p ${task_benckmark_base_path}; \
     for offset in {1..${task_loop}} ; do \
         podman run --rm \
-            -v \${TEST_DIR}:\${TEST_DIR}:Z \
+            -v ${task_benckmark_base_path}:${task_benckmark_base_path}:Z \
             ljishen/fio \
                 $(yq -r ".task_profiles.${task_name}.commands" ${GLOBAL_CONFIG})
-                --directory=\"\${TEST_DIR}\" \
-                --name=\"fio_io_\${offset}\" \
+                --directory=${task_benckmark_base_path} \
+                --name=fio_io_\${offset} \
                 --output-format=json \
-                --output=\"\${TEST_DIR}/result_\${offset}.json\" ;\
+                --output=${task_benckmark_base_path}/result_\${offset}.json ;\
         sleep 10; \
-        rm -f \${TEST_DIR}/fio_io_\${offset}* ||true ; \
+        rm -f ${task_benckmark_base_path}/fio_io_* ||true ; \
         echo \"[\$offset] <=> \$(hostname) <=> \$(date) <=> \$(uptime) \"; \
     done; \
-    tar cfz \${TEST_DIR}_results.tar.gz \${TEST_DIR}*/*.json" \
+    tar cfz ${task_results_file} ${task_benckmark_base_path}*/*.json" \
       2>/dev/null | tee -a ${log_stdout}
 
-  # collect results
+  # collect results (copy directly from node)
   ${oc_cmd} debug node/${node_name} -- chroot /host /bin/bash -c \
-    "cat ${task_base_dir}_results.tar.gz" \
+    "cat ${task_results_file}" \
     2>/dev/null > ${result_path_base}/${task_name}-${OPT_JOB_NAME}-${node_name}.tar.gz
 
   set +x
@@ -101,6 +102,22 @@ task_fio_libaio_randrw() {
 }
 
 task_fio_psync_randwrite() {
+  run_fio "$@"
+}
+
+task_fio_sync_write() {
+  run_fio "$@"
+}
+
+task_fio_sync_read() {
+  run_fio "$@"
+}
+
+task_fio_sync_rw() {
+  run_fio "$@"
+}
+
+task_fio_sync_write_alias() {
   run_fio "$@"
 }
 

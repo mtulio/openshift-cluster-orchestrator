@@ -121,10 +121,18 @@ cluster_config_rendering() {
     exit 1
   fi
 
+
+  # publish: default=external
+  local glob_publish="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.publish ${GLOBAL_CONFIG} || true)"
+  if [[ -z "${glob_publish}" ]] || [[ "${glob_publish}" == "null" ]]; then
+    glob_publish="External"
+  fi
+
   # Rendering cluster variables
   cat << EOF > ${CLUSTER_CFG_RENDERED}
 cluster_name: ${OPT_CLUSTER_NAME}
 baseDomain: ${baseDomain}
+publish: ${glob_publish}
 
 # Platform specifics
 platform: ${platform_name}

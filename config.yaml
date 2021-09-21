@@ -311,6 +311,27 @@ task_profiles:
       --group_reporting \
       --norandommap \
 
+  # Copy of fio_sync_write.
+  # TODO add a concept of alias to don't override the
+  # results running same profile more than one time in a single job
+  fio_sync_write_alias:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=write \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --iodepth=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
   fio_sync_read:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/"
@@ -404,9 +425,28 @@ benchmark_profiles:
 
   fio_fsync_masterNodes:
     task_profiles:
+      #- fio_ebs_initialize #TODO fix it, it's failing
       - fio_sync_write
       - fio_sync_read
       - fio_sync_rw
+      - fio_sync_write_alias
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'
+
+  # TODO new way to define tasks (dict instead of list), so now
+  # it's possible to repeat one task profile in one Job execution
+  fio_fsync_masterNodes2:
+    run_tasks:
+      #- fio_ebs_initialize #TODO fix it, it's failing
+      0_fio_sync_write:
+        profile: fio_sync_write
+      1_fio_sync_read:
+        profile: fio_sync_read
+      2_fio_sync_rw:
+        profile: fio_sync_rw
+      3_fio_sync_write:
+        profile: fio_sync_write
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: '*'
