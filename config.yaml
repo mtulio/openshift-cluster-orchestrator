@@ -1,0 +1,461 @@
+
+config:
+  workdir: ./.local
+
+#
+# Tool dependencies
+#
+dependencies:
+  - name: oc
+    path: /usr/bin/oc
+    env_name: OC_CLI
+
+    # Extract from CI: to run oc adm release extract --tools {image}
+  - name: openshift-install-4.9.0-0.nightly-2021-08-13-053517
+    path: ./.local/bin/penshift-install-4.9.0-0.nightly-2021-08-13
+    type: extract
+    image: registry.ci.openshift.org/ocp/release:4.9.0-0.ci-2021-08-12-161315
+    env_name: OC_INST
+
+  # Build installer from src
+  # TODO add instructions to build
+  # Ref PR: https://github.com/mtulio/installer/pull/4
+  # $(which time) -v ./hack/build.sh
+  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    type: git
+    repo: git@github.com:mtulio/installer.git
+    version: SPLAT-254s1
+    env_name: OC_INST
+  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    env_name: OC_INST
+    type: git
+    repo: git@github.com:mtulio/installer.git
+    version: SPLAT-254s1v2
+
+#
+# OpenShift Installer Config | defaults
+#
+defaults:
+  network:
+    type: OpenShiftSDN
+    cluster_cidr: 10.128.0.0/14
+    cluster_prefix: 23
+    machine_cidr: 10.0.0.0/16
+    service_cidr: 172.30.0.0/16
+  aws:
+    # installer: publish
+    publish: External
+    # installer: .platform.aws
+    platform:
+      region: us-east-1
+    baseDomain: ${DEFAULT_BASEDOMAIN_AWS}
+    controlPlane:
+      type: m5.xlarge
+      # TODO: check if it's supported
+      #vm_spot_price: 0.192
+    compute:
+      type: m5.xlarge
+      # TODO: check if it's supported
+      #vm_spot_price: 0.192
+    vol_type: gp2
+    vol_size: 128
+
+  azure:
+    # installer: publish
+    publish: External
+    # installer: .platform.azure
+    baseDomain: $DEFAULT_BASEDOMAIN_AZURE
+    platform:
+      baseDomainResourceGroupName: os4-common
+      cloudName: AzurePublicCloud
+      outboundType: Loadbalancer
+      region: eastus
+
+# OpenShift Installer Config | cluster profiles
+cluster_profiles:
+  aws_default:
+    name: aws_default
+    platform: aws
+  azure_default:
+    name: azure_default
+    platform: azure
+
+  # Custom AWS profiles
+  aws_m5x1xgp2:
+    name: aws_m5x1xgp2
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+  aws_m5x2xgp2:
+    name: aws_m5x2xgp2
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
+  aws_m5x1xgp3:
+    name: aws_m5x1xgp3
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 128
+  aws_m5x2xgp3:
+    name: aws_m5x2xgp3
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 128
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
+  aws_m5x1xgp3_64G:
+    name: aws_m5x1xgp3
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 64
+  aws_m5x2xgp3_64G:
+    name: aws_m5x1xgp3
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
+    platform: aws
+    vol_type: gp3
+    vol_size: 64
+    manifest_patchs:
+      - patch_machine_aws_2xDevBlocks
+      - patch_machineConfig_aws_mount_etcd
+
+#
+# Task profiles
+#
+task_profiles:
+  # FIO embeeded on etcd-perf image
+  fio_etcd_defaults:
+    image: quay.io/openshift-scale/etcd-perf
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+
+  # FIO write test
+  # it will stress the volume to reach the burst
+  fio_defaults:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 10
+    commands: |
+      --rw=write \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --size=200m \
+      --bs=2300 \
+      --directory=\"\$TEST_DIR\" \
+      --name=\"fio_io_\${l}\${i}\" \
+      --output-format=json \
+      --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;
+
+  # AWS Doc (init ebs)
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
+  fio_libaio_rw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 5
+    commands: |
+      --rw=rw \
+      --ioengine=libaio \
+      --bs=16k \
+      --iodepth=16 \
+      --direct=1 \
+      --fdatasync=1 \
+      --size=3276m \
+
+  #> AWS Docs / rec bench test
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
+  # TODO: how to Disable C-states in RHCOS?
+  fio_psync_randwrite:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randwrite \
+      --ioengine=psync \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  #? randread uses default ioengine (on example)
+  aws_fio_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 5
+    commands: |
+      --rw=randread \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
+  fio_ebs_initialize:
+    image: ljishen/fio
+    commands: |
+      --filename=/dev/nvme0n1 \
+      --rw=read \
+      --bs=128k \
+      --iodepth=32 \
+      --ioengine=libaio \
+      --direct=1 \
+      --name=volume-initialize
+
+  # TODO check> FIO bench comparasion st1, gp2 and gp3:
+  # https://gist.github.com/niwinz/138c9ce49f484b3b66ee5f061d7f999b
+
+  # TODO create those profiles:
+  # for each: TEST={read,write,randread,randwrite,randrw}
+  # params: fio --rw=TEST --direct=1 --ioengine=libaio --bs=16k --numjobs=8 --size=1G --group_reporting
+  fio_libaio_read:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=read \
+      --ioengine=libaio \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_write:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=write \
+      --ioengine=libaio \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randread \
+      --ioengine=libaio \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randwrite:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randwrite \
+      --ioengine=libaio \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_libaio_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --rw=randrw \
+      --ioengine=libaio \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  # FIO fsync
+  # https://fio.readthedocs.io/en/latest/fio_doc.html#i-o-engine
+  fio_sync_write:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=write \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --iodepth=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  # Copy of fio_sync_write.
+  # TODO add a concept of alias to don't override the
+  # results running same profile more than one time in a single job
+  fio_sync_write_alias:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=write \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --iodepth=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_read:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=read \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_rw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=rw \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  fio_sync_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/"
+    loop: 1
+    commands: |
+      --rw=randrw \
+      --ioengine=sync \
+      --fdatasync=1 \
+      --bs=16k \
+      --direct=1 \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+#> Profiles
+benchmark_profiles:
+  # RUN jobs on one control plane
+  fio_etcd_one_cp:
+    task_profiles:
+      #- fio_libaio_read
+      #- fio_libaio_rw
+      #- fio_etcd_defaults
+      - aws_fio_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: 0
+
+  # run jobs on all control plane
+  fio_etcd_all_cp:
+    task_profiles:
+      #- aws_ebs_initialize
+      #- fio_libaio_rw
+      #- fio_etcd_defaults
+      - aws_fio_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'
+    parallel_nodes: yes
+
+  # Run all fio tasks on all master nodes
+  fio_allTasks_masterNodes:
+    task_profiles:
+      - fio_ebs_initialize
+      - fio_psync_randwrite
+      - fio_libaio_read
+      - fio_libaio_write
+      #- fio_libaio_rw
+      - fio_libaio_randread
+      - fio_libaio_randwrite
+      - fio_libaio_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'
+
+  fio_fsync_masterNodes:
+    task_profiles:
+      #- fio_ebs_initialize #TODO fix it, it's failing
+      - fio_sync_write
+      - fio_sync_read
+      - fio_sync_rw
+      - fio_sync_write_alias
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'
+
+  # TODO new way to define tasks (dict instead of list), so now
+  # it's possible to repeat one task profile in one Job execution
+  fio_fsync_masterNodes2:
+    run_tasks:
+      #- fio_ebs_initialize #TODO fix it, it's failing
+      0_fio_sync_write:
+        profile: fio_sync_write
+      1_fio_sync_read:
+        profile: fio_sync_read
+      2_fio_sync_rw:
+        profile: fio_sync_rw
+      3_fio_sync_write:
+        profile: fio_sync_write
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: '*'

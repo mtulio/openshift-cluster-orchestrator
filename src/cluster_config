@@ -1,0 +1,253 @@
+#!/bin/sh
+
+#
+# Rendering the cluster variables based on config.yaml
+#
+cluster_config_rendering() {
+
+  echo "Rendering configuration for cluster [${OPT_CLUSTER_NAME}] from profile [${OPT_CLUSTER_PROFILE}]"
+
+  local platform_name="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.platform ${GLOBAL_CONFIG})"
+  echo "Found platform [${platform_name}] "
+
+  # platform specifics
+  if [[ "${platform_name}" == "aws" ]]; then
+    vol_key="rootVolume"
+  elif [[ "${platform_name}" == "azure" ]]; then
+    vol_key="osDisk"
+  else
+    echo "Platform not found to render config, exiting..."
+    exit 1;
+  fi
+
+  # check baseDomain
+  local baseDomain_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.basedomain ${GLOBAL_CONFIG} || true)"
+  local baseDomain_plat="$(yq -r .defaults.${platform_name}.baseDomain ${GLOBAL_CONFIG})"
+  if [[ -z "${baseDomain_cluster}" ]] || [[ "${baseDomain_cluster}" == "null" ]]; then
+    baseDomain="${baseDomain_plat}"
+  else
+    baseDomain="${baseDomain_cluster}"
+  fi
+
+  # Extracting domain from env var
+  if [[ "${baseDomain}" =~ "\$" ]]; then
+    baseDomain=$(env |grep $(printf $(echo ${baseDomain} |tr -d '${}')) |awk -F'=' '{print$2}')
+  fi
+
+  # instance/vm type: control plane (cpl) and compute (comp)
+  local vm_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.controlPlane.type ${GLOBAL_CONFIG} || true)"
+  local vm_cpl_type_plat="$(yq -r .defaults.${platform_name}.controlPlane.type ${GLOBAL_CONFIG} )"
+  if [[ -z "${vm_cpl_type_cluster}" ]] || [[ "${vm_cpl_type_cluster}" == "null" ]]; then
+    vm_type_cpl="${vm_cpl_type_plat}"
+  else
+    vm_type_cpl="${vm_cpl_type_cluster}"
+  fi
+
+  local vm_comp_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.compute.type ${GLOBAL_CONFIG} || true)"
+  local vm_comp_type_plat="$(yq -r .defaults.${platform_name}.compute.type ${GLOBAL_CONFIG} )"
+  if [[ -z "${vm_comp_type_cluster}" ]] || [[ "${vm_comp_type_cluster}" == "null" ]]; then
+    vm_type_comp="${vm_comp_type_plat}"
+  else
+    vm_type_comp="${vm_comp_type_cluster}"
+  fi
+
+  # Vol types
+  local vol_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type ${GLOBAL_CONFIG} || true)"
+  local vol_cpl_type_plat="$(yq -r .defaults.${platform_name}.vol_type ${GLOBAL_CONFIG} )"
+  if [[ -z "${vol_cpl_type_cluster}" ]] || [[ "${vol_cpl_type_cluster}" == "null" ]]; then
+    vol_type_cpl="${vol_cpl_type_plat}"
+    vol_size_cpl="$(yq -r .defaults.${platform_name}.vol_size ${GLOBAL_CONFIG} )"
+  else
+    vol_type_cpl="${vol_cpl_type_cluster}"
+    vol_size_cpl="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_size ${GLOBAL_CONFIG} )"
+  fi
+
+  # TODO: customize disk for cluster roles (master, worker, etc)
+  # local vol_comp_type_cluster="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type || true)"
+  # local vol_comp_type_plat="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform}.vol_type )"
+  # if [[ -z "${vm_comp_type_cluster}" ]] || [[ "${vm_comp_type_cluster}" == "null" ]]; then
+  #   vol_type_comp="${vm_comp_type_plat}"
+  #   vol_size_cpl="$(yq . ${GLOBAL_CONFIG} |jq -r .defaults.${platform}.vol_size )"
+  # else
+  #   vol_type_comp="${vm_comp_type_cluster}"
+  #   vol_size_comp="$(yq . ${GLOBAL_CONFIG} |jq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_size)"
+  # fi
+
+  # Replica count
+  local rpl_count_cpl="$(yq -r .defaults.${platform_name}.controlPlane.replicas ${GLOBAL_CONFIG})"
+  local rpl_count_comp="$(yq -r .defaults.${platform_name}.controlPlane.replicas ${GLOBAL_CONFIG} )"
+  if [[ -z "${rpl_count_cpl}" ]] || [[ "${rpl_count_cpl}" == "null" ]]; then
+    rpl_count_cpl=3
+  fi
+  if [[ -z "${rpl_count_comp}" ]] || [[ "${rpl_count_comp}" == "null" ]]; then
+    rpl_count_comp=3
+  fi
+
+  # Arch
+  local nodes_arch="$(yq -r .defaults.${platform_name}.architecture ${GLOBAL_CONFIG} )"
+  if [[ -z "${nodes_arch}" ]] || [[ "${nodes_arch}" == "null" ]]; then
+    nodes_arch="amd64"
+  fi
+
+  # bin path: installer
+  local bin_installer="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.installer ${GLOBAL_CONFIG} || true)"
+  if [[ -z "${bin_installer}" ]] || [[ "${bin_installer}" == "null" ]]; then
+    echo "ERROR: {installer} not found on Cluster Profile section"
+    tmp_installer=$(command -v openshift-install)
+    if [[ -z "${tmp_installer}" ]]; then
+      echo "ERROR: {openshift-install} binary not found on your system. Install it and run again..."
+      exit 1
+    fi
+    bin_installer=${tmp_installer}
+  else # assuming a custom oc
+    bin_installer="${WORKDIR}/bin/${bin_installer}"
+  fi
+  # check if is executable
+  if [[ ! -x ${bin_installer} ]]; then
+    echo "ERROR: installer binary not found on path [${bin_installer}]"
+    exit 1
+  fi
+
+  # bin path: oc
+  local bin_oc="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.oc ${GLOBAL_CONFIG} || true)"
+  if [[ -z "${bin_oc}" ]] || [[ "${bin_oc}" == "null" ]]; then
+    echo "WARN: {oc} not found on Cluster Profile section, looking on your system..."
+    tmp_oc=$(command -v oc)
+    if [[ -z "${tmp_oc}" ]]; then
+      echo "ERROR: {oc} binary not found on your system. Install it and run again..."
+      exit 1
+    fi
+    bin_oc=${tmp_oc}
+  else # assuming a custom oc
+    bin_oc="${WORKDIR}/bin/${bin_oc}"
+  fi
+  if [[ ! -x ${bin_oc} ]]; then
+    echo "ERROR: oc binary not found on path [${bin_oc}]"
+    exit 1
+  fi
+
+
+  # publish: default=external
+  local glob_publish="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.publish ${GLOBAL_CONFIG} || true)"
+  if [[ -z "${glob_publish}" ]] || [[ "${glob_publish}" == "null" ]]; then
+    glob_publish="External"
+  fi
+
+  # Rendering cluster variables
+  cat << EOF > ${CLUSTER_CFG_RENDERED}
+cluster_name: ${OPT_CLUSTER_NAME}
+baseDomain: ${baseDomain}
+publish: ${glob_publish}
+
+# Platform specifics
+platform: ${platform_name}
+platform_options: $(yq -r .defaults.${platform_name}.platform ${GLOBAL_CONFIG} )
+vol_key: ${vol_key}
+
+nodes_architecture: ${nodes_arch}
+
+controlPlane_replicas_count: ${rpl_count_cpl}
+compute_replicas_count: ${rpl_count_comp}
+
+EOF
+
+  if [[ "${controlPlane_vm_type:-null}" != 'null' ]]; then
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
+controlPlane_vm_type: ${vm_type_cpl}
+controlPlane_vol_type: ${vol_type_cpl}
+controlPlane_vol_size: ${vol_size_cpl}
+EOF
+  fi
+
+  if [[ "${compute_vm_type:-null}" == 'null' ]]; then
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
+compute_vm_type: ${vm_type_comp}
+compute_vol_type: ${vol_type_cpl}
+compute_vol_size: ${vol_size_cpl}
+EOF
+  fi
+
+  cat << EOF >> ${CLUSTER_CFG_RENDERED}
+
+# Network
+net_type: $(yq -r .defaults.network.type ${GLOBAL_CONFIG} )
+net_cluster_cidr: $(yq -r .defaults.network.cluster_cidr ${GLOBAL_CONFIG} )
+net_cluster_prefix: $(yq -r .defaults.network.cluster_prefix ${GLOBAL_CONFIG} )
+net_machine_cidr: $(yq -r .defaults.network.machine_cidr ${GLOBAL_CONFIG} )
+net_service_cidr: $(yq -r .defaults.network.service_cidr ${GLOBAL_CONFIG} )
+
+# Paths / bins
+installer_path: ${bin_installer}
+oc_path: ${bin_oc}
+EOF
+  test -f ${CLUSTER_CFG_RENDERED} && (
+    echo "Rendered configuration saved [${CLUSTER_CFG_RENDERED}]"
+  ) || (
+    echo "ERROR to saved rendered configuration [${CLUSTER_CFG_RENDERED}]"
+  )
+}
+
+cluster_create_install_config() {
+
+  # Check dependencies
+  if [[ -z ${PULL_SECRET} ]]; then
+    echo "Environment var is not defined: PULL_SECRET. Exiting...";
+    exit 1;
+  fi
+
+  if [[ -z ${SSH_PUB_KEYS} ]]; then
+    echo "Environment var is not defined: SSH_PUB_KEYS. Exiting...";
+    exit 1;
+  fi
+
+  # vars to render config
+  local icfg_path_base="${CLUSTER_HOME}_install-config.yaml"
+  local icfg_path_home="${CLUSTER_HOME}/install-config.yaml"
+
+  # render config
+  cat << EOF > ${icfg_path_base}
+apiVersion: v1
+baseDomain: $(yq -r .baseDomain ${CLUSTER_CFG_RENDERED})
+compute:
+- architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
+  hyperthreading: Enabled
+  name: worker
+  platform:
+    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
+      type: $(yq -r .compute_vm_type ${CLUSTER_CFG_RENDERED})
+      $(yq -r .vol_key ${CLUSTER_CFG_RENDERED}):
+        size: $(yq -r .compute_vol_size ${CLUSTER_CFG_RENDERED})
+        type: $(yq -r .compute_vol_type ${CLUSTER_CFG_RENDERED})
+  replicas: $(yq -r .compute_replicas_count ${CLUSTER_CFG_RENDERED})
+controlPlane:
+  architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
+  hyperthreading: Enabled
+  name: master
+  platform:
+    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
+      type: $(yq -r .controlPlane_vm_type ${CLUSTER_CFG_RENDERED})
+      $(yq -r .vol_key ${CLUSTER_CFG_RENDERED}):
+        size: $(yq -r .controlPlane_vol_size ${CLUSTER_CFG_RENDERED})
+        type: $(yq -r .controlPlane_vol_type ${CLUSTER_CFG_RENDERED})
+  replicas: $(yq -r .controlPlane_replicas_count ${CLUSTER_CFG_RENDERED})
+metadata:
+  name: $(yq -r .cluster_name ${CLUSTER_CFG_RENDERED})
+networking:
+  clusterNetwork:
+  - cidr: $(yq -r '.net_cluster_cidr' ${CLUSTER_CFG_RENDERED})
+    hostPrefix: $(yq -r '.net_cluster_prefix' ${CLUSTER_CFG_RENDERED})
+  machineNetwork:
+  - cidr: $(yq -r '.net_machine_cidr' ${CLUSTER_CFG_RENDERED})
+  networkType: $(yq -r '.net_type' ${CLUSTER_CFG_RENDERED})
+  serviceNetwork:
+  - $(yq -r '.net_service_cidr' ${CLUSTER_CFG_RENDERED})
+platform:
+  $(yq -r .platform ${CLUSTER_CFG_RENDERED}): $(yq -r .platform_options ${CLUSTER_CFG_RENDERED})
+publish: $(yq -r .publish ${CLUSTER_CFG_RENDERED})
+pullSecret: '${PULL_SECRET}'
+sshKey: |
+  ${SSH_PUB_KEYS}
+
+EOF
+  cp ${icfg_path_base} ${icfg_path_home}
+}

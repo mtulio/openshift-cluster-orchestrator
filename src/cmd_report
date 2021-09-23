@@ -1,0 +1,12 @@
+#!/bin/sh
+
+#
+# Handle Report files
+#
+
+cmd_report_main() {
+    echo "[report] command not implemented. TODOs:"
+
+    echo "- fio_runtime : how many tasks was completed? Total time? Load1"
+    exit 0
+}

@@ -1,0 +1,253 @@
+#!/bin/sh
+
+#
+# Collect metrics data from Prometheus API.
+# See helper function (show_help|-h) for more information.
+#
+# TODO: migrate run-test.sh to here
+
+#Safeguards
+set -o pipefail
+set -o nounset
+set -o errexit
+
+declare -g OPT_CMD=""
+
+# ####
+# MAIN
+# ####
+function show_help {
+
+    cat <<-EOF
+Usage: ${0} command [options]
+
+Available commands:
+
+    cluster         Create or Destroy a cluster.
+    dependenceis    Install dependencies
+    list            List current components (clusters, results, profiles, etc)
+    report          Run pre-build reports based on results collected
+    run             Run benchmark from a existing cluster.
+    config          Show current configuration.
+
+Global options:
+    -h | --help             Show this help
+    --cluster-name {name}   Name of cluster to be created. Should match with installation directory
+    --only-manifests             Create manifests only
+    --only-ignitions              Create ignition files only
+
+Available options for 'list' (only):
+
+    --items           List all current items.
+    --item {name}     Item to list: cluster-profiles, benchmark-profiles, clusters?, results?
+
+Available commands for 'cluster':
+
+    setup
+    install
+    create
+    destroy|delete
+    ping
+    link|kubeconfig
+
+Available options for 'cluster':
+
+    --cluster-profile   {name}      Tell profile to provision the cluster
+    --kubeconfig        {path}      Creeate a like to your kubeconfig on .local/{cluster-name}/auth/kubeconfig
+
+
+Available options for 'run' (only):
+
+    --job-name          {name}  Create a job to run on a cluster
+    --job-group         {name}  Group the results into a directorey {job_group}
+    --task-loop         {int}   Number of loop to run each task
+    --cluster-name      {name}  Cluster name to lookup the kubeconfig: .local/{cluster-name}/auth/kubeconfig
+    --benchmark-profile {name}  Job definition to run the test. Contains the group of tasks and selector.
+    --dump-prometheus           Dump Prometheus DB to .local/results/{runner-id}/prometheus-db
+
+Examples:
+    # Create a cluster
+    ${0} create \\
+        --cluster-profile aws_m5x1xgp2 \\
+        --cluster-name m5x1xgp2
+
+    # Create a cluster and run the test
+    ${0} create \\
+        --cluster-profile aws_m5x1xgp2 \\
+        --cluster-name c1 \\
+        --run \\
+        --job-name b1-c1 \\
+        --benchmark-profile fio_defaults \\
+        --dump-prometheus
+
+    # Start running the test
+    ${0} run \\
+        --job-name b1-c1 \\
+        --cluster-name c1 \\
+        --benchmark-profile fio_defaults \\
+        --dump-prometheus
+
+    ${0} run \\
+        --job-name b1-c2 \\
+        --cluster-name c2 \\
+        --benchmark-profile fio_defaults \\
+        --dump-prometheus
+
+    #> The results will be saved on .local/results/(|byGroup-{job_name})
+
+EOF
+
+}
+
+#
+# Globals
+#
+
+set_globals_init() {
+
+    # Global config
+    declare -g GLOBAL_CONFIG="${PWD}/config.yaml"
+
+    # Workdir
+    declare -g WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
+    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
+    declare -g WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
+    declare -g WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
+
+    # Installer options
+    declare -g OPT_CLUSTER_CMD=""
+    declare -g OPT_KUBECONFIG=false
+    declare -g OPT_FORCE=false
+
+}
+
+# Set globals with arg parsed
+set_globals_argparsed() {
+    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
+    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
+    declare -g CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
+}
+
+#
+# cli parsers
+#
+
+parse_opts() {
+
+    CURRENT_OPTS="$@"
+    # NOTE: This requires GNU getopt.
+    # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
+    GETOPT_SET=`getopt -n 'ocp-benchmark' \
+            -o hd \
+            --long debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
+            -- "$@"`
+
+    if [ $? != 0 ] ; then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+    eval set -- "${GETOPT_SET}"
+
+    set_globals_init
+    while true; do
+        case "$1" in
+            -h | --help         ) show_help; exit 2 ;;
+            -d | --debug        ) OPT_DEBUG=true; shift ;;
+            --job-name          ) OPT_JOB_NAME="$2"; shift 2 ;;
+            --job-group         ) OPT_JOB_GROUP="$2"; shift 2 ;;
+            --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
+            --benchmark-profile ) OPT_BENCH_PROFILE="$2"; shift 2 ;;
+            --task-loop         ) OPT_TASK_LOOP="$2"; shift 2 ;;
+            -- ) shift; break ;;
+            * ) echo "Option not found"; break ;;
+        esac
+    done
+    # Validations
+    if [[ -z ${OPT_JOB_NAME:-} ]]; then
+        echo "ERROR: missing flag --job-name {name}";
+        exit 1
+    fi
+
+    set_globals_argparsed
+
+    case ${OPT_CMD} in
+        "run"    ) 
+            source $(dirname $0)/src/cmd_run;
+            cmd_run_main;
+        ;;
+        "report" )
+            source $(dirname $0)/src/cmd_report;
+            cmd_report_main;
+        ;;
+    esac
+}
+
+parse_opt_cluster() {
+
+    set_globals_init
+    case ${1} in
+        "create"|"destroy"|"setup"|"install"|"delete"|"ping") OPT_CLUSTER_CMD="${1}"; shift ;;
+        * ) echo "Create target was not found. Use one of: create|destroy"; exit 1 ;;
+    esac
+
+    CURRENT_OPTS="$@"
+    # NOTE: This requires GNU getopt.
+    # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
+    GETOPT_SET=`getopt -n 'ocp-benchmark' \
+            -o hdcdf \
+            --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
+            -- "$@"`
+
+    if [ $? != 0 ] ; then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+    eval set -- "${GETOPT_SET}"
+
+    while true; do
+        case "$1" in
+            -h | --help         ) show_help; exit 2 ;;
+            -d | --debug        ) OPT_DEBUG=true; shift ;;
+            --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
+            --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
+            --kubeconfig        ) OPT_KUBECONFIG=true; shift ;;
+            --force             ) OPT_FORCE=true; shift ;;
+            --only-manifests    ) OPT_CLUSTER_MANIFESTS_ONLY=true; shift ;;
+            --only-ignitions    ) OPT_CLUSTER_IGNITION_ONLY=true; shift ;;
+            -- ) shift; break ;;
+            * ) echo "Option not found"; break ;;
+        esac
+    done
+
+    # Validations
+    if [[ -z ${OPT_CLUSTER_NAME:-} ]]; then
+        echo "ERROR: missing flag --cluster-name {name}";
+        exit 1
+    fi
+
+    if [[ ${OPT_KUBECONFIG:-} == true ]]; then
+        if [[ "${KUBECONFIG:-}x" == "x" ]]; then
+            echo "ERROR: --kubeconfig was set but KUBECONFIG environment was not found";
+            exit 1;
+        fi
+        echo "Using KUBECONFIG=${KUBECONFIG}"
+    fi
+    set_globals_argparsed
+    source $(dirname $0)/src/cmd_cluster
+    cmd_cluster_main
+}
+
+parse_cmds() {
+    case ${1:-""} in
+    "cluster"|"c"       ) OPT_CMD="$1"; shift; parse_opt_cluster "$@";;
+    "run"               ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    "report"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"dependencies"|"d"  ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"list"              ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    #"config"            ) OPT_CMD="$1"; shift; parse_opts "$@";;
+    *) echo "Command [${1:-}] not found"; show_help;;
+    esac
+}
+
+test -f $(dirname $0)/.env && source $(dirname $0)/.env
+parse_cmds "$@"
