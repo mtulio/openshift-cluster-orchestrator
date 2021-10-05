@@ -76,6 +76,13 @@ cluster_ping() {
   ${bin_oc} --kubeconfig ${CLUSTER_KUBECONFIG} get nodes
 }
 
+cluster_validation_arg_profile() {
+  if [[ -z ${OPT_CLUSTER_PROFILE:-} ]]; then
+      echo "ERROR: missing flag --cluster-profile {name}";
+      exit 1
+  fi
+}
+
 # Create a 'fake cluster' / link to a existing kubeconfig (valid to run tests only)
 cmd_cluster_create_kubeconfig() {
     local auth_dir=$(dirname ${CLUSTER_KUBECONFIG})
@@ -131,15 +138,18 @@ cmd_cluster_main() {
       # setup a cluster: create all dependencies, but not provision
       # OCP installer cmd: create manifests (or ignition-files)
       "setup")
+          cluster_validation_arg_profile
           cmd_cluster_setup
       ;;
       # [re]Install a cluster previously created
       "install")
+          cluster_validation_arg_profile
           cmd_cluster_install
       ;;
       # setup+install:
       # OCP installer cmd: create cluster
       "create")
+          cluster_validation_arg_profile
           cmd_cluster_create
       ;;
       # OCP installer cmd: destroy cluster
