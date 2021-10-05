@@ -53,10 +53,10 @@ cluster_config_rendering() {
 
   # Vol types
   local vol_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_type ${GLOBAL_CONFIG} || true)"
-  local vol_cpl_type_plat="$(yq -r .defaults.${platform_name}.vol_type ${GLOBAL_CONFIG} )"
+  #local vol_cpl_type_plat="$(yq -r .defaults.${platform_name}.vol_type ${GLOBAL_CONFIG} )"
   if [[ -z "${vol_cpl_type_cluster}" ]] || [[ "${vol_cpl_type_cluster}" == "null" ]]; then
-    vol_type_cpl="${vol_cpl_type_plat}"
-    vol_size_cpl="$(yq -r .defaults.${platform_name}.vol_size ${GLOBAL_CONFIG} )"
+    vol_type_cpl=""
+    vol_size_cpl=""
   else
     vol_type_cpl="${vol_cpl_type_cluster}"
     vol_size_cpl="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.vol_size ${GLOBAL_CONFIG} )"
@@ -185,6 +185,7 @@ EOF
   ) || (
     echo "ERROR to saved rendered configuration [${CLUSTER_CFG_RENDERED}]"
   )
+
 }
 
 cluster_create_install_config() {
@@ -214,10 +215,25 @@ compute:
   name: worker
   platform:
     $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
+EOF
+    local v="$(yq -r .compute_vm_type ${CLUSTER_CFG_RENDERED})"
+    if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
+    if [[ ! -z "${v}" ]]; then
+    cat << EOF >> ${icfg_path_base}
       type: $(yq -r .compute_vm_type ${CLUSTER_CFG_RENDERED})
+EOF
+    fi
+
+    local v="$(yq -r .compute_vol_type ${CLUSTER_CFG_RENDERED})"
+    if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
+    if [[ ! -z "${v}" ]]; then
+      cat << EOF >> ${icfg_path_base}
       $(yq -r .vol_key ${CLUSTER_CFG_RENDERED}):
         size: $(yq -r .compute_vol_size ${CLUSTER_CFG_RENDERED})
         type: $(yq -r .compute_vol_type ${CLUSTER_CFG_RENDERED})
+EOF
+    fi
+    cat << EOF >> ${icfg_path_base}
   replicas: $(yq -r .compute_replicas_count ${CLUSTER_CFG_RENDERED})
 controlPlane:
   architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
@@ -225,10 +241,25 @@ controlPlane:
   name: master
   platform:
     $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
+EOF
+    local v="$(yq -r .controlPlane_vm_type ${CLUSTER_CFG_RENDERED})"
+    if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
+    if [[ ! -z "${v}" ]]; then
+    cat << EOF >> ${icfg_path_base}
       type: $(yq -r .controlPlane_vm_type ${CLUSTER_CFG_RENDERED})
+EOF
+    fi
+
+    local v="$(yq -r .controlPlane_vol_type ${CLUSTER_CFG_RENDERED})"
+    if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
+    if [[ ! -z "${v}" ]]; then
+      cat << EOF >> ${icfg_path_base}
       $(yq -r .vol_key ${CLUSTER_CFG_RENDERED}):
         size: $(yq -r .controlPlane_vol_size ${CLUSTER_CFG_RENDERED})
-        type: $(yq -r .controlPlane_vol_type ${CLUSTER_CFG_RENDERED})
+        type: ${v}
+EOF
+    fi
+    cat << EOF >> ${icfg_path_base}
   replicas: $(yq -r .controlPlane_replicas_count ${CLUSTER_CFG_RENDERED})
 metadata:
   name: $(yq -r .cluster_name ${CLUSTER_CFG_RENDERED})
