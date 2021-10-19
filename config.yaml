@@ -5,34 +5,34 @@ config:
 #
 # Tool dependencies
 #
-dependencies:
-  - name: oc
-    path: /usr/bin/oc
-    env_name: OC_CLI
+# dependencies:
+#   - name: oc
+#     path: /usr/bin/oc
+#     env_name: OC_CLI
 
-    # Extract from CI: to run oc adm release extract --tools {image}
-  - name: openshift-install-4.9.0-0.nightly-2021-08-13-053517
-    path: ./.local/bin/penshift-install-4.9.0-0.nightly-2021-08-13
-    type: extract
-    image: registry.ci.openshift.org/ocp/release:4.9.0-0.ci-2021-08-12-161315
-    env_name: OC_INST
+#     # Extract from CI: to run oc adm release extract --tools {image}
+#   - name: openshift-install-4.9.0-0.nightly-2021-08-13-053517
+#     path: ./.local/bin/penshift-install-4.9.0-0.nightly-2021-08-13
+#     type: extract
+#     image: registry.ci.openshift.org/ocp/release:4.9.0-0.ci-2021-08-12-161315
+#     env_name: OC_INST
 
-  # Build installer from src
-  # TODO add instructions to build
-  # Ref PR: https://github.com/mtulio/installer/pull/4
-  # $(which time) -v ./hack/build.sh
-  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
-    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
-    type: git
-    repo: git@github.com:mtulio/installer.git
-    version: SPLAT-254s1
-    env_name: OC_INST
-  - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
-    path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
-    env_name: OC_INST
-    type: git
-    repo: git@github.com:mtulio/installer.git
-    version: SPLAT-254s1v2
+#   # Build installer from src
+#   # TODO add instructions to build
+#   # Ref PR: https://github.com/mtulio/installer/pull/4
+#   # $(which time) -v ./hack/build.sh
+#   - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+#     path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-1xEBS
+#     type: git
+#     repo: git@github.com:mtulio/installer.git
+#     version: SPLAT-254s1
+#     env_name: OC_INST
+#   - name: openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+#     path: ./.local/bin/openshift-installer-4.9-gp3m6i-monit-ebsOpt-2xEBS
+#     env_name: OC_INST
+#     type: git
+#     repo: git@github.com:mtulio/installer.git
+#     version: SPLAT-254s1v2
 
 #
 # OpenShift Installer Config | defaults
@@ -59,8 +59,8 @@ defaults:
       type: m5.xlarge
       # TODO: check if it's supported
       #vm_spot_price: 0.192
-    vol_type: gp2
-    vol_size: 128
+    #vol_type: gp2
+    #vol_size: 128
 
   azure:
     # installer: publish
@@ -78,9 +78,19 @@ cluster_profiles:
   aws_default:
     name: aws_default
     platform: aws
+  aws_default_gp3:
+    name: aws_default_gp3
+    installer: openshift-install-4.10-pr5239-gp3
+    platform: aws
+
   azure_default:
     name: azure_default
     platform: azure
+
+  azure_default_49:
+    name: azure_default_49
+    platform: azure
+    installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
 
   # Custom AWS profiles
   aws_m5x1xgp2:
