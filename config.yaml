@@ -75,27 +75,18 @@ defaults:
 
 # OpenShift Installer Config | cluster profiles
 cluster_profiles:
+  # AWS
   aws_default:
     name: aws_default
     platform: aws
-  aws_default_gp3:
-    name: aws_default_gp3
-    installer: openshift-install-4.10-pr5239-gp3
-    platform: aws
-  aws_default_latest:
-    name: aws_default_latest
-    #installer: openshift-install-master-20211028
-    #installer: openshift-install-master-2021102803
-    installer: openshift-install-master-20211029-fix-user-search
-    platform: aws
   
-  # GA releases
+  ## GA releases
   aws_ga_46:
     name: aws_ga_46
     installer: openshift-install-4.6.49
     platform: aws
 
-  # Development branch
+  ## Development builds
   aws_dev_411:
     name: aws_dev_411
     installer: openshift-install-4.10-b-release-4.11
@@ -109,22 +100,15 @@ cluster_profiles:
     installer: openshift-install-master
     platform: aws
 
-  azure_default:
-    name: azure_default
-    platform: azure
-
-  azure_default_49:
-    name: azure_default_49
-    platform: azure
+  ## Other AWS profiles
+  ### Profiles used on gp3 development, prior 4.10. Build references:
+  ###> 2xEBS: https://github.com/mtulio/installer/pull/4/files#diff-1d1c6cd6df20b7e2fd321d88255bb4dfc9cbbe4289ee324829f5fc03ac977c9dR166-R178 
+  aws_m5x1xgp2:
+    name: aws_m5x1xgp2
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
-
-    # Custom AWS profiles
-    aws_m5x1xgp2:
-      name: aws_m5x1xgp2
-      installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-1xEBS
-      platform: aws
-    aws_m5x2xgp2:
-      name: aws_m5x2xgp2
+    platform: aws
+  aws_m5x2xgp2:
+    name: aws_m5x2xgp2
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
     manifest_patchs:
@@ -160,6 +144,11 @@ cluster_profiles:
     manifest_patchs:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
+
+  # Azure
+  azure_default:
+    name: azure_default
+    platform: azure
 
 #
 # Task profiles
