@@ -92,7 +92,7 @@ cluster_profiles:
     installer: openshift-install-master-20211029-fix-user-search
     platform: aws
   
-  # GA releases
+  ## GA releases
   aws_ga_46:
     name: aws_ga_46
     installer: openshift-install-4.6.49
