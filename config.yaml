@@ -89,9 +89,24 @@ cluster_profiles:
     installer: openshift-install-master-20211029-fix-user-search
     platform: aws
   
-  aws_default_46:
-    name: aws_default_46
+  # GA releases
+  aws_ga_46:
+    name: aws_ga_46
     installer: openshift-install-4.6.49
+    platform: aws
+
+  # Development branch
+  aws_dev_411:
+    name: aws_dev_411
+    installer: openshift-install-4.10-b-release-4.11
+    platform: aws
+  aws_dev_master:
+    name: aws_dev_master
+    installer: openshift-install-master
+    platform: aws
+  aws_dev_latest:
+    name: aws_dev_latest
+    installer: openshift-install-master
     platform: aws
 
   azure_default:
