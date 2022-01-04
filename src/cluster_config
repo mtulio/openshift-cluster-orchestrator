@@ -159,7 +159,7 @@ controlPlane_vol_size: ${vol_size_cpl}
 EOF
   fi
 
-  if [[ "${compute_vm_type:-null}" == 'null' ]]; then
+  if [[ "${compute_vm_type:-null}" != 'null' ]]; then
   cat << EOF >> ${CLUSTER_CFG_RENDERED}
 compute_vm_type: ${vm_type_comp}
 compute_vol_type: ${vol_type_cpl}
