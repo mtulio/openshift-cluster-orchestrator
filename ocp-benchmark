@@ -1,12 +1,10 @@
 #!/bin/sh
 
 #
-# Collect metrics data from Prometheus API.
+# OCP cluster orchestrator and benchmark job runner.
 # See helper function (show_help|-h) for more information.
 #
-# TODO: migrate run-test.sh to here
 
-#Safeguards
 set -o pipefail
 set -o nounset
 set -o errexit
@@ -67,12 +65,12 @@ Available options for 'run' (only):
 
 Examples:
     # Create a cluster
-    ${0} create \\
+    ${0} cluster create \\
         --cluster-profile aws_m5x1xgp2 \\
         --cluster-name m5x1xgp2
 
     # Create a cluster and run the test
-    ${0} create \\
+    ${0} cluster create \\
         --cluster-profile aws_m5x1xgp2 \\
         --cluster-name c1 \\
         --run \\
