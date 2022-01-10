@@ -78,6 +78,31 @@ cluster_profiles:
     installer: openshift-install-master
     platform: aws
 
+  ### CCO
+  aws_dev_cco_sts:
+    name: aws_dev_cco
+    platform: aws
+    credentialsMode: Manual
+    installer: openshift-install-master
+    manifest_patchs:
+      - patch_cco_aws_sts
+
+  aws_dev_cco_sts_restrict:
+    platform: aws
+    credentialsMode: Manual
+    installer: openshift-install-master
+    manifest_patchs:
+      - patch_cco_aws_sts
+      - patch_cco_aws_sts_s3_restrict
+
+  aws_dev_cco_sts_nobucket:
+    platform: aws
+    credentialsMode: Manual
+    installer: openshift-install-master
+    manifest_patchs:
+      - patch_cco_aws_sts
+      - patch_cco_aws_sts_s3_nobucket
+
   ## Other AWS profiles
   ### Profiles used on gp3 development, prior 4.10. Build references:
   ###> 2xEBS: https://github.com/mtulio/installer/pull/4/files#diff-1d1c6cd6df20b7e2fd321d88255bb4dfc9cbbe4289ee324829f5fc03ac977c9dR166-R178 

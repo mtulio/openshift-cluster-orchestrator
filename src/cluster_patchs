@@ -1,7 +1,11 @@
 #!/bin/sh
 
 #
-# Manifests Patchs
+# Cluster patchs
+#
+
+#
+# Manifests Patchs / step
 #
 
 # Patch Machine Manifest for AWS to add two block devices
@@ -49,6 +53,7 @@ EOF
   rm -rf ${tmpdir}
 }
 
+# patch MachineConfig adding extra disk to mount etcd
 patch_machineConfig_aws_mount_etcd() {
 
   # https://docs.fedoraproject.org/en-US/fedora-coreos/storage/
@@ -90,4 +95,107 @@ spec:
             [Install]
             WantedBy=local-fs.target
 EOF
+}
+
+# Run CCO as manual-STS
+patch_cco_aws_sts() {
+  pushd ${CLUSTER_HOME}
+
+  local bin_oc=$(yq -r .oc_path ${CLUSTER_CFG_RENDERED})
+  local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
+  local bin_ccoctl=$(yq -r .ccoctl_path ${CLUSTER_CFG_RENDERED})
+
+  # install
+  CCO_IMAGE=$(${bin_oc} adm release info \
+              -a ${PULL_SECRET_PATH} \
+              --image-for='cloud-credential-operator' \
+              ${RELEASE_IMAGE})
+  ${bin_oc} image extract ${CCO_IMAGE} \
+    -a ${PULL_SECRET_PATH} \
+    --file="/usr/bin/ccoctl"
+  mv ./ccoctl ${bin_ccoctl}
+  chmod 775 ${bin_ccoctl}
+
+  ${bin_oc} adm release extract \
+    -a ${PULL_SECRET_PATH} \
+    --credentials-requests \
+    --cloud=aws \
+    --to=${CLUSTER_HOME}/_cco-credRequests \
+    ${RELEASE_IMAGE}
+
+  local cluster_name=$(awk '/infrastructureName:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
+  local cluster_region=$(awk '/region:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
+  ${bin_ccoctl} aws create-all \
+    --name=${cluster_name} \
+    --region=${cluster_region} \
+    --credentials-requests-dir=${CLUSTER_HOME}/_cco-credRequests \
+    --output-dir=${CLUSTER_HOME}/_cco-manifests \
+
+  cp ${CLUSTER_HOME}/_cco-manifests/manifests/* ${CLUSTER_HOME}/manifests/
+  cp -a ${CLUSTER_HOME}/_cco-manifests/tls ${CLUSTER_HOME}/
+
+  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
+  popd
+
+}
+
+# Patch CCO S3 bucket to use restrictive policy
+patch_cco_aws_sts_s3_restrict() {
+
+  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
+  local policy_file="${CLUSTER_HOME}/_cco-bucket-policy.json"
+
+  echo "#cco path> Modifying bucket ${bucket_name} to more restrictive policies"
+  cat << EOF > ${policy_file}
+{
+    "Version": "2012-10-17",
+    "Id": "SourceIP",
+    "Statement": [
+        {
+            "Sid": "SourceIP",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:Get*",
+            "Resource": [
+                "arn:aws:s3:::${bucket_name}",
+                "arn:aws:s3:::${bucket_name}/*"
+            ],
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "10.0.0.0/8"
+                }
+            }
+        }
+    ]
+}
+EOF
+
+  echo "#cco patch>> Creating bucket policy: "
+  cat ${policy_file}
+  aws s3api put-bucket-policy \
+    --bucket ${bucket_name} \
+    --policy file://${policy_file}
+
+  BLOCK_CFG="BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+  echo "#cco patch>> Removing public access config: ${BLOCK_CFG}"
+  aws s3api put-public-access-block \
+    --bucket ${bucket_name} \
+    --public-access-block-configuration ${BLOCK_CFG}
+}
+
+# (lab) Patch/Remove CCO S3 bucket to validate if cluster will be created
+patch_cco_aws_sts_s3_nobucket() {
+
+  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
+
+  echo "#cco path> Deleting bucket ${bucket_name} objects"
+  aws s3 rm s3://${bucket_name} --recursive
+
+  echo "#cco path> Deleting bucket ${bucket_name}"
+  aws s3api delete-bucket \
+    --bucket ${bucket_name}
+}
+
+cluster_hook_preserve_bootstrap() {
+  export OPENSHIFT_INSTALL_PRESERVE_BOOTSTRAP=true
 }

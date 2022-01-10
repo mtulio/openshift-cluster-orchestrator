@@ -34,6 +34,14 @@ cluster_config_rendering() {
     baseDomain=$(env |grep $(printf $(echo ${baseDomain} |tr -d '${}')) |awk -F'=' '{print$2}')
   fi
 
+  # credentialsMode
+  local credMode="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.credentialsMode ${GLOBAL_CONFIG})"
+  if [[ -z "${credMode}" ]] || [[ "${credMode}" == "null" ]]; then
+    credMode=""
+  else
+    credMode="${credMode}"
+  fi
+
   # instance/vm type: control plane (cpl) and compute (comp)
   local vm_cpl_type_cluster="$(yq -r .cluster_profiles.${OPT_CLUSTER_PROFILE}.controlPlane.type ${GLOBAL_CONFIG} || true)"
   local vm_cpl_type_plat="$(yq -r .defaults.${platform_name}.controlPlane.type ${GLOBAL_CONFIG} )"
@@ -137,6 +145,7 @@ cluster_config_rendering() {
   cat << EOF > ${CLUSTER_CFG_RENDERED}
 cluster_name: ${OPT_CLUSTER_NAME}
 baseDomain: ${baseDomain}
+credentialsMode: ${credMode}
 publish: ${glob_publish}
 
 # Platform specifics
@@ -179,6 +188,7 @@ net_service_cidr: $(yq -r .defaults.network.service_cidr ${GLOBAL_CONFIG} )
 # Paths / bins
 installer_path: ${bin_installer}
 oc_path: ${bin_oc}
+ccoctl_path: ${WORKDIR}/bin/ccoctl
 EOF
   test -f ${CLUSTER_CFG_RENDERED} && (
     echo "Rendered configuration saved [${CLUSTER_CFG_RENDERED}]"
@@ -209,6 +219,15 @@ cluster_create_install_config() {
   cat << EOF > ${icfg_path_base}
 apiVersion: v1
 baseDomain: $(yq -r .baseDomain ${CLUSTER_CFG_RENDERED})
+EOF
+  local credMode="$(yq -r .credentialsMode ${CLUSTER_CFG_RENDERED})"
+  if [[ ${credMode} != "" ]]; then
+  cat << EOF >> ${icfg_path_base}
+credentialsMode: ${credMode}
+EOF
+  fi
+
+cat << EOF >> ${icfg_path_base}
 compute:
 - architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
   hyperthreading: Enabled
