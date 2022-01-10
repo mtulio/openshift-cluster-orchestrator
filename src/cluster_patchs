@@ -98,6 +98,7 @@ EOF
 }
 
 # Run CCO as manual-STS
+# https://docs.openshift.com/container-platform/4.9/authentication/managing_cloud_provider_credentials/cco-mode-sts.html
 patch_cco_aws_sts() {
   pushd ${CLUSTER_HOME}
 
@@ -106,37 +107,44 @@ patch_cco_aws_sts() {
   local bin_ccoctl=$(yq -r .ccoctl_path ${CLUSTER_CFG_RENDERED})
 
   # install
-  CCO_IMAGE=$(${bin_oc} adm release info \
-              -a ${PULL_SECRET_PATH} \
-              --image-for='cloud-credential-operator' \
-              ${RELEASE_IMAGE})
-  ${bin_oc} image extract ${CCO_IMAGE} \
-    -a ${PULL_SECRET_PATH} \
-    --file="/usr/bin/ccoctl"
-  mv ./ccoctl ${bin_ccoctl}
-  chmod 775 ${bin_ccoctl}
+  if [[ ! -x ${bin_ccoctl} ]]; then
+    echo "#> Getting CCO IMAGE"
+    CCO_IMAGE=$(${bin_oc} adm release info \
+                -a ${PULL_SECRET_PATH} \
+                --image-for='cloud-credential-operator' \
+                ${RELEASE_IMAGE})
+    echo "#> Extracting ccoctl binary"
+    ${bin_oc} image extract ${CCO_IMAGE} \
+      -a ${PULL_SECRET_PATH} \
+      --file="/usr/bin/ccoctl"
+    mv ./ccoctl ${bin_ccoctl}
+    chmod 775 ${bin_ccoctl}
+  fi
 
+  #mkdir -p ${CLUSTER_HOME}/_cco-credRequests
+  echo "#> Extracting Credential Request manifests from release"
   ${bin_oc} adm release extract \
     -a ${PULL_SECRET_PATH} \
     --credentials-requests \
-    --cloud=aws \
-    --to=${CLUSTER_HOME}/_cco-credRequests \
+    --cloud aws \
+    --to ${CLUSTER_HOME}/_cco-credRequests \
     ${RELEASE_IMAGE}
 
   local cluster_name=$(awk '/infrastructureName:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
   local cluster_region=$(awk '/region:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
+
+  echo "#> Create AWS assets for manual STS: cluster=[${cluster_name}] region=[${cluster_region}]"
   ${bin_ccoctl} aws create-all \
     --name=${cluster_name} \
     --region=${cluster_region} \
     --credentials-requests-dir=${CLUSTER_HOME}/_cco-credRequests \
-    --output-dir=${CLUSTER_HOME}/_cco-manifests \
+    --output-dir=${CLUSTER_HOME}/_cco-manifests
 
-  cp ${CLUSTER_HOME}/_cco-manifests/manifests/* ${CLUSTER_HOME}/manifests/
-  cp -a ${CLUSTER_HOME}/_cco-manifests/tls ${CLUSTER_HOME}/
+  echo "#> Copying manifests to install dir."
+  cp -v ${CLUSTER_HOME}/_cco-manifests/manifests/* ${CLUSTER_HOME}/manifests/
+  cp -av ${CLUSTER_HOME}/_cco-manifests/tls ${CLUSTER_HOME}/
 
-  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
   popd
-
 }
 
 # Patch CCO S3 bucket to use restrictive policy
@@ -183,19 +191,51 @@ EOF
     --public-access-block-configuration ${BLOCK_CFG}
 }
 
-# (lab) Patch/Remove CCO S3 bucket to validate if cluster will be created
-patch_cco_aws_sts_s3_nobucket() {
+# patch_s3_nobucket() {
 
-  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
+#   local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
 
-  echo "#cco path> Deleting bucket ${bucket_name} objects"
-  aws s3 rm s3://${bucket_name} --recursive
+#   echo "#> Deleting bucket ${bucket_name} objects"
+#   aws s3 rm s3://${bucket_name} --recursive
 
-  echo "#cco path> Deleting bucket ${bucket_name}"
-  aws s3api delete-bucket \
-    --bucket ${bucket_name}
-}
+#   echo "#> Deleting bucket ${bucket_name}"
+#   aws s3api delete-bucket \
+#     --bucket ${bucket_name}
+# }
 
 cluster_hook_preserve_bootstrap() {
   export OPENSHIFT_INSTALL_PRESERVE_BOOTSTRAP=true
+}
+
+# WIP
+# (lab) Manifest Hook to create OIDC with CloudFront
+patch_cco_aws_sts_s3_restrict_cloudfront() {
+  local bucket_name=$(awk '/serviceAccountIssuer:/{print$2}' ${CLUSTER_HOME}/_cco-manifests/manifests/cluster-authentication-02-config.yaml |awk -F'//' '{print$2}' |awk -F'.' '{print$1}')
+  local policy_file="${CLUSTER_HOME}/_cco-bucket-policy.json"
+
+  # Create CF distribution
+  # https://docs.aws.amazon.com/cli/latest/reference/cloudfront/create-cloud-front-origin-access-identity.html
+  CFN_ID=$(aws cloudfront create-cloud-front-origin-access-identity \
+    --cloud-front-origin-access-identity-config \
+      CallerReference="cfn-identity-oidc-${cluster_name}",Comment="CloudFront identity for cluster ${cluster_name}" \
+      |jq .CloudFrontOriginAccessIdentity.Id)
+
+  aws cloudfront create-distribution --generate-cli-skeleton
+
+  echo "#cco path> CDN config to host OIDC ${bucket_name} "
+  cat << EOF > ${policy_file}
+TBD
+EOF
+
+  echo "#cco patch>> Creating bucket policy: "
+  cat ${policy_file}
+  aws s3api put-bucket-policy \
+    --bucket ${bucket_name} \
+    --policy file://${policy_file}
+
+  BLOCK_CFG="BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+  echo "#cco patch>> Removing public access config: ${BLOCK_CFG}"
+  aws s3api put-public-access-block \
+    --bucket ${bucket_name} \
+    --public-access-block-configuration ${BLOCK_CFG}
 }

@@ -49,11 +49,11 @@ cluster_create_manifests() {
   ${bin_installer} --dir ${CLUSTER_HOME} create manifests
 }
 
-cluster_create_patchs() {
+cluster_create_manifest_hooks() {
   source $(dirname $0)/src/cluster_patchs
-  for patch in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.manifest_patchs[]?" ${GLOBAL_CONFIG}); do
-    echo "Running patch [${patch}]"
-    ${patch}
+  for hook in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.manifest_hooks[]?" ${GLOBAL_CONFIG}); do
+    echo "Running hook [${hook}]"
+    ${hook}
   done
 }
 
@@ -110,7 +110,7 @@ cmd_cluster_setup() {
   
   cluster_create_install_config
   cluster_create_manifests
-  cluster_create_patchs
+  cluster_create_manifest_hooks
   if [[ ${OPT_CLUSTER_MANIFESTS_ONLY:-} == true ]]; then
       exit 0
   fi
@@ -156,6 +156,7 @@ cmd_cluster_main() {
       "destroy"|"delete")
           cluster_backup_installdir
           cluster_check_exists_to_destroy
+          #cluster_destroy_cco # ToDo
           cluster_destroy
       ;;
       # send a ping (get nodes/version/etc) to validate if created cluster is live

@@ -84,24 +84,30 @@ cluster_profiles:
     platform: aws
     credentialsMode: Manual
     installer: openshift-install-master
-    manifest_patchs:
+    oc: oc-linux-4.10.0-0.nightly-2022-01-10-014106
+    manifest_hooks:
       - patch_cco_aws_sts
+      - cluster_hook_preserve_bootstrap
 
   aws_dev_cco_sts_restrict:
     platform: aws
     credentialsMode: Manual
     installer: openshift-install-master
-    manifest_patchs:
+    oc: oc-linux-4.10.0-0.nightly-2022-01-10-014106
+    manifest_hooks:
       - patch_cco_aws_sts
       - patch_cco_aws_sts_s3_restrict
+      - cluster_hook_preserve_bootstrap
 
-  aws_dev_cco_sts_nobucket:
+  aws_dev_cco_sts_restrict_cfront:
     platform: aws
     credentialsMode: Manual
     installer: openshift-install-master
-    manifest_patchs:
+    oc: oc-linux-4.10.0-0.nightly-2022-01-10-014106
+    manifest_hooks:
       - patch_cco_aws_sts
-      - patch_cco_aws_sts_s3_nobucket
+      - patch_cco_aws_sts_s3_restrict_cloudfront
+      - cluster_hook_preserve_bootstrap
 
   ## Other AWS profiles
   ### Profiles used on gp3 development, prior 4.10. Build references:
@@ -114,7 +120,7 @@ cluster_profiles:
     name: aws_m5x2xgp2
     installer: openshift-install-4.9-gp3m6i-monit-ebsOpt-2xEBS
     platform: aws
-    manifest_patchs:
+    manifest_hooks:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
   aws_m5x1xgp3:
@@ -129,7 +135,7 @@ cluster_profiles:
     platform: aws
     vol_type: gp3
     vol_size: 128
-    manifest_patchs:
+    manifest_hooks:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
   aws_m5x1xgp3_64G:
@@ -144,7 +150,7 @@ cluster_profiles:
     platform: aws
     vol_type: gp3
     vol_size: 64
-    manifest_patchs:
+    manifest_hooks:
       - patch_machine_aws_2xDevBlocks
       - patch_machineConfig_aws_mount_etcd
 
