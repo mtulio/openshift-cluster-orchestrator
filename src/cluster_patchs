@@ -130,6 +130,9 @@ patch_cco_aws_sts() {
     --to ${CLUSTER_HOME}/_cco-credRequests \
     ${RELEASE_IMAGE}
 
+  # BZ https://bugzilla.redhat.com/show_bug.cgi?id=2035903
+  rm -vf ${CLUSTER_HOME}/_cco-credRequests/0000_30_capi-operator_00_credentials-request.yaml
+
   local cluster_name=$(awk '/infrastructureName:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
   local cluster_region=$(awk '/region:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
 
@@ -205,6 +208,7 @@ EOF
 
 cluster_hook_preserve_bootstrap() {
   export OPENSHIFT_INSTALL_PRESERVE_BOOTSTRAP=true
+  #exit 1
 }
 
 # WIP
@@ -238,4 +242,57 @@ EOF
   aws s3api put-public-access-block \
     --bucket ${bucket_name} \
     --public-access-block-configuration ${BLOCK_CFG}
+}
+
+# Hook (after manifest) to create user for CCO.
+# https://docs.openshift.com/container-platform/4.9/authentication/managing_cloud_provider_credentials/cco-mode-sts.html
+hook_cco_alicloud_user_create() {
+  pushd ${CLUSTER_HOME}
+
+  local bin_oc=$(yq -r .oc_path ${CLUSTER_CFG_RENDERED})
+  local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
+  local bin_ccoctl=$(yq -r .ccoctl_path ${CLUSTER_CFG_RENDERED})
+  local cloud_name="alibabacloud"
+
+  # install
+  if [[ ! -x ${bin_ccoctl} ]]; then
+    echo "#> Getting CCO IMAGE"
+    CCO_IMAGE=$(${bin_oc} adm release info \
+                -a ${PULL_SECRET_PATH} \
+                --image-for='cloud-credential-operator' \
+                ${RELEASE_IMAGE})
+    echo "#> Extracting ccoctl binary"
+    ${bin_oc} image extract ${CCO_IMAGE} \
+      -a ${PULL_SECRET_PATH} \
+      --file="/usr/bin/ccoctl"
+    mv ./ccoctl ${bin_ccoctl}
+    chmod 775 ${bin_ccoctl}
+  fi
+
+  #mkdir -p ${CLUSTER_HOME}/_cco-credRequests
+  echo "#> Extracting Credential Request manifests from release"
+  ${bin_oc} adm release extract \
+    -a ${PULL_SECRET_PATH} \
+    --credentials-requests \
+    --cloud ${cloud_name} \
+    --to ${CLUSTER_HOME}/_cco-credRequests \
+    ${RELEASE_IMAGE}
+
+  # BZ https://bugzilla.redhat.com/show_bug.cgi?id=2035903
+  rm -vf ${CLUSTER_HOME}/_cco-credRequests/0000_30_capi-operator_00_credentials-request.yaml
+
+  local cluster_name=$(awk '/infrastructureName:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
+  local cluster_region=$(awk '/region:/{print $2}' ${CLUSTER_HOME}/manifests/cluster-infrastructure-02-config.yml)
+
+  echo "#> Create AlibabaCloud users for CCO: cluster=[${cluster_name}] region=[${cluster_region}]"
+  ${bin_ccoctl} ${cloud_name} create-ram-users \
+    --name=${cluster_name} \
+    --region=${cluster_region} \
+    --credentials-requests-dir=${CLUSTER_HOME}/_cco-credRequests \
+    --output-dir=${CLUSTER_HOME}/_cco-manifests
+
+  echo "#> Copying manifests to install dir."
+  cp -v ${CLUSTER_HOME}/_cco-manifests/manifests/* ${CLUSTER_HOME}/manifests/
+
+  popd
 }

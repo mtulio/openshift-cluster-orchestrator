@@ -39,6 +39,12 @@ defaults:
       outboundType: Loadbalancer
       region: eastus
 
+  alibabacloud:
+    publish: External
+    baseDomain: ${DEFAULT_BASEDOMAIN_ALIBABA}
+    platform:
+      region: us-east-1
+
 # OpenShift Installer Config | cluster profiles
 cluster_profiles:
   # AWS
@@ -158,6 +164,18 @@ cluster_profiles:
   azure_default:
     name: azure_default
     platform: azure
+
+  # Alibaba
+  alicloud_dev_latest:
+    name: alicloud_dev_latest
+    installer: openshift-install-master
+    oc: oc-linux-4.10.0-0.nightly-2022-01-10-014106
+    platform: alibabacloud
+    manifest_hooks:
+      - hook_cco_alicloud_user_create
+      - cluster_hook_preserve_bootstrap
+    after_destroy_hooks:
+      - cluster_hook_cco_alicloud_user_delete
 
 #
 # Task profiles

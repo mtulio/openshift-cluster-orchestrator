@@ -15,6 +15,8 @@ cluster_config_rendering() {
     vol_key="rootVolume"
   elif [[ "${platform_name}" == "azure" ]]; then
     vol_key="osDisk"
+  elif [[ "${platform_name}" == "alibabacloud" ]]; then
+    vol_key=""
   else
     echo "Platform not found to render config, exiting..."
     exit 1;
