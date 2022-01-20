@@ -272,11 +272,14 @@ hook_cco_alicloud_user_create() {
   #mkdir -p ${CLUSTER_HOME}/_cco-credRequests
   echo "#> Extracting Credential Request manifests from release"
   ${bin_oc} adm release extract \
+    --loglevel ${OC_OPTION_LOGLEVEL} \
     -a ${PULL_SECRET_PATH} \
     --credentials-requests \
     --cloud ${cloud_name} \
     --to ${CLUSTER_HOME}/_cco-credRequests \
     ${RELEASE_IMAGE}
+  #cp -rvf ${CLUSTER_HOME}_backup/_cco-credRequests ${CLUSTER_HOME}/_cco-credRequests
+  #rm -rvf ${CLUSTER_HOME}/_cco-manifests
 
   # BZ https://bugzilla.redhat.com/show_bug.cgi?id=2035903
   rm -vf ${CLUSTER_HOME}/_cco-credRequests/0000_30_capi-operator_00_credentials-request.yaml
@@ -294,5 +297,27 @@ hook_cco_alicloud_user_create() {
   echo "#> Copying manifests to install dir."
   cp -v ${CLUSTER_HOME}/_cco-manifests/manifests/* ${CLUSTER_HOME}/manifests/
 
+  popd
+}
+
+cluster_hook_cco_alicloud_user_delete() {
+  pushd ${CLUSTER_HOME}
+
+  local bin_ccoctl=$(yq -r .ccoctl_path ${CLUSTER_CFG_RENDERED})
+  local cloud_name="alibabacloud"
+  local before_meta_file="${CLUSTER_HOME}/.metadata.json"
+
+  if [[  ! -f ${before_meta_file} ]]; then
+    echo "hook [cluster_hook_cco_alicloud_user_delete] file not found: ${before_meta_file}"
+    return
+  fi
+  
+  local cluster_name=$(yq -r .infraID ${before_meta_file})
+  local cluster_region=$(yq -r .alibabacloud.region ${before_meta_file})
+
+  echo "#> Create AlibabaCloud users for CCO: cluster=[${cluster_name}] region=[${cluster_region}]"
+  ${bin_ccoctl} ${cloud_name} delete-ram-users \
+    --name=${cluster_name} \
+    --region=${cluster_region} 
   popd
 }

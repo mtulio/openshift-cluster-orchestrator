@@ -39,14 +39,19 @@ cluster_destroy() {
   local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
   echo "Destroing cluster from install dir [${CLUSTER_HOME}]"
-  ${bin_installer} --dir ${CLUSTER_HOME} destroy cluster
+  ${bin_installer} destroy cluster \
+    --dir ${CLUSTER_HOME} \
+    --log-level ${OPENSHIFT_INSTALL_DEBUG}
 }
 
 cluster_create_manifests() {
   local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
   rm -rf ${CLUSTER_HOME}/openshift ${CLUSTER_HOME}/manifests || true
-  ${bin_installer} --dir ${CLUSTER_HOME} create manifests
+  ${bin_installer} create manifests \
+    --dir ${CLUSTER_HOME} \
+    --log-level ${OPENSHIFT_INSTALL_DEBUG}
+
 }
 
 cluster_create_manifest_hooks() {
@@ -57,10 +62,28 @@ cluster_create_manifest_hooks() {
   done
 }
 
+cluster_hooks_before_destroy() {
+  source $(dirname $0)/src/cluster_patchs
+  for hook in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.after_before_hooks[]?" ${GLOBAL_CONFIG}); do
+    echo "Running hook [${hook}]"
+    ${hook}
+  done
+}
+
+cluster_hooks_after_destroy() {
+  source $(dirname $0)/src/cluster_patchs
+  for hook in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.after_destroy_hooks[]?" ${GLOBAL_CONFIG}); do
+    echo "Running hook [${hook}]"
+    ${hook}
+  done
+}
+
 cluster_create() {
   local bin_installer=$(yq -r .installer_path ${CLUSTER_CFG_RENDERED})
 
-  ${bin_installer} --dir ${CLUSTER_HOME} create cluster
+  ${bin_installer} create cluster \
+    --dir ${CLUSTER_HOME} \
+    --log-level ${OPENSHIFT_INSTALL_DEBUG}
 }
 
 cluster_ping() {
@@ -81,6 +104,12 @@ cluster_validation_arg_profile() {
       echo "ERROR: missing flag --cluster-profile {name}";
       exit 1
   fi
+}
+
+cluster_validation_log_level() {
+  export OPENSHIFT_INSTALL_DEBUG=${OPENSHIFT_INSTALL_DEBUG:-"info"}
+  # https://cloud.redhat.com/blog/oc-command-newbies
+  export OC_OPTION_LOGLEVEL${OC_LOGLEVEL:-"5"}
 }
 
 # Create a 'fake cluster' / link to a existing kubeconfig (valid to run tests only)
@@ -156,8 +185,9 @@ cmd_cluster_main() {
       "destroy"|"delete")
           cluster_backup_installdir
           cluster_check_exists_to_destroy
-          #cluster_destroy_cco # ToDo
+          cluster_hooks_before_destroy
           cluster_destroy
+          cluster_hooks_after_destroy
       ;;
       # send a ping (get nodes/version/etc) to validate if created cluster is live
       "ping")
