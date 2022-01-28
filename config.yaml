@@ -168,15 +168,18 @@ cluster_profiles:
     manifest_hooks:
       - cluster_hook_preserve_bootstrap
 
+  azure_49:
+    name: azure_49
+    platform: azure
+    installer: openshift-install-4.9.17
+    oc: oc-linux-4.9.17
+    manifest_hooks:
+      - cluster_hook_preserve_bootstrap
+
   # Alibaba
   alicloud_dev_latest:
     name: alicloud_dev_latest
-    #installer: openshift-install-master
-    #installer: openshift-install-master-2021011403
-    #installer: openshift-install-master-2021011404-script-debug
-    #installer: openshift-install-master-2021011405-teardowndelay-600
-    #installer: openshift-install-master-2021011405-teardowndelay-10m
-    installer: openshift-install-master-2021011701-alicloud-teardown-10m
+    installer: openshift-install-master
     oc: oc-linux-4.10.0-0.ci-2022-01-13-055829
     platform: alibabacloud
     manifest_hooks:

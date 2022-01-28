@@ -234,13 +234,13 @@ compute:
 - architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
   hyperthreading: Enabled
   name: worker
-  platform:
-    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
 EOF
     local v="$(yq -r .compute_vm_type ${CLUSTER_CFG_RENDERED})"
     if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
     if [[ ! -z "${v}" ]]; then
     cat << EOF >> ${icfg_path_base}
+  platform:
+    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
       type: $(yq -r .compute_vm_type ${CLUSTER_CFG_RENDERED})
 EOF
     fi
@@ -260,13 +260,13 @@ controlPlane:
   architecture: $(yq -r .nodes_architecture ${CLUSTER_CFG_RENDERED})
   hyperthreading: Enabled
   name: master
-  platform:
-    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
 EOF
     local v="$(yq -r .controlPlane_vm_type ${CLUSTER_CFG_RENDERED})"
     if [[ -z "${v}" ]] || [[ "${v}" == "null" ]]; then v=""; fi
     if [[ ! -z "${v}" ]]; then
     cat << EOF >> ${icfg_path_base}
+  platform:
+    $(yq -r .platform ${CLUSTER_CFG_RENDERED}):
       type: $(yq -r .controlPlane_vm_type ${CLUSTER_CFG_RENDERED})
 EOF
     fi
