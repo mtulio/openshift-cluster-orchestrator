@@ -1,6 +1,8 @@
-# openshift-benchmark-orchestrator
+# openshift-cluster-orchestrator
 
-Tool to orchestrate OCP cluster and run pre-built benchmark jobs, interacting with projects:
+Tool that run obove openshift-installer to orchestrate the configuration pre-install applying configuration in the manifests, or patchs on the manifests before triggering the `create cluster`.
+
+The tool also orchestrate initial benchmark jobs to a fresh cluster, for example running benchmark in specific components like: disks, etcd, node CPU, etc, interacting with projects:
 - openshift-installer
 - FIO
 - benchmark-operator
@@ -47,19 +49,30 @@ The rendered configuration for a cluster will be saved on local storage `.local/
 
 This command creates the install-config.yaml and run `openshift-install create cluster`.
 
-Create a cluster named `c2awsm5x2xgp2` with profile `aws_m5x2xgp2`
+**Examples:**
+
+- Create a cluster named `c2awsm5x2xgp2` with profile `aws_m5x2xgp2`
 
 ~~~
-ocp-benchmark cluster create \
+oco cluster create \
     --cluster-profile aws_m5x2xgp2 \
     --cluster-name c2awsm5x2xgp2 --force
 ~~~
+
+- Create a cluster in AWS with manual STS mode:
+
+~~~
+oco cluster create \
+    --cluster-profile labccosts \
+    --cluster-name aws_dev_cco_sts
+~~~
+
 
 #### `cluster create --kubeconfig` or `cluster link`
 
 Command:
 ```
-ocp-benchmark cluster create \
+oco cluster create \
     --cluster-name c2awsm5x2xgp2 --kubeconfig
 ```
 
@@ -74,7 +87,7 @@ Create a pseudo cluster to be used on this project. That command will read the `
 If you want to render the install-config and create manifests, run the `cluster setup`:
 
 ~~~
-ocp-benchmark cluster setup \
+oco cluster setup \
     --cluster-profile aws_m5x2xgp2 \
     --cluster-name c2awsm5x2xgp2
 ~~~
@@ -88,7 +101,7 @@ Then, check-out the changes and run the `cluster install`.
 Install a cluster from a already created install dir:
 
 ~~~
-ocp-benchmark cluster install \
+oco cluster install \
     --cluster-profile aws_m5x2xgp2 \
     --cluster-name c2awsm5x2xgp2
 ~~~
