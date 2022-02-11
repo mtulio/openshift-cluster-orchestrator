@@ -114,13 +114,11 @@ set_globals_init() {
     # Workdir
     declare -g WORKDIR
     declare -g WORKDIR_CLUSTERS
-    declare -g WORKDIR_JOBS
     declare -g WORKDIR_RESULTS
 
-    WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
-    WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
-    WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
-    WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
+    WORKDIR="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")"
+    WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")/clusters"
+    WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")/results"
 
     # Installer options
     declare -g OPT_CLUSTER_CMD
