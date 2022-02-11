@@ -1,0 +1,21 @@
+# https://github.com/marketplace/actions/shell-linter
+name: shell-linter
+on: [push]
+jobs:
+  ShellCheckLinter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v1
+      - name: Create and populate .env file
+        run: |
+          cp ./.env-sample ./.env
+        shell: bash
+      - name: Run Shellcheck main
+        uses: azohra/shell-linter@latest
+        with:
+          path: "ocp-cluster-orchestrator"
+      - name: Run Shellcheck on src
+        uses: azohra/shell-linter@latest
+        with:
+          path: './src'

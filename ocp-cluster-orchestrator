@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 #
 # OCP cluster orchestrator and benchmark job runner.
@@ -108,53 +108,60 @@ EOF
 set_globals_init() {
 
     # Global config
-    declare -g GLOBAL_CONFIG="${PWD}/config.yaml"
+    declare -g GLOBAL_CONFIG
+    GLOBAL_CONFIG="${PWD}/config.yaml"
 
     # Workdir
-    declare -g WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
-    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
-    declare -g WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
-    declare -g WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
+    declare -g WORKDIR
+    declare -g WORKDIR_CLUSTERS
+    declare -g WORKDIR_RESULTS
+
+    WORKDIR="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")"
+    WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")/clusters"
+    WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir "${GLOBAL_CONFIG}")/results"
 
     # Installer options
-    declare -g OPT_CLUSTER_CMD=""
-    declare -g OPT_KUBECONFIG=false
-    declare -g OPT_FORCE=false
+    declare -g OPT_CLUSTER_CMD
+    declare -g OPT_KUBECONFIG
+    declare -g OPT_FORCE
+
+    OPT_CLUSTER_CMD=""
+    OPT_KUBECONFIG=false
+    OPT_FORCE=false
 
 }
 
 # Set globals with arg parsed
 set_globals_argparsed() {
-    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
-    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
-    declare -g CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
+    declare -g CLUSTER_HOME
+    declare -g CLUSTER_KUBECONFIG
+    declare -g CLUSTER_CFG_RENDERED
+
+    CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
+    CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
+    CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
 }
 
 #
 # cli parsers
 #
-
 parse_opts() {
 
-    CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=`getopt -n 'oco' \
+    if ! opts=$(getopt -n 'oco' \
             -o hd \
             --long config,debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
-            -- "$@"`
-
-    if [ $? != 0 ] ; then
+            -- "$@"); then
         echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
         exit 1 ;
     fi
-    eval set -- "${GETOPT_SET}"
+    eval set -- "${opts}"
 
     set_globals_init
     while true; do
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
-            -d | --debug        ) OPT_DEBUG=true; shift ;;
             --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --job-name          ) OPT_JOB_NAME="$2"; shift 2 ;;
             --job-group         ) OPT_JOB_GROUP="$2"; shift 2 ;;
@@ -175,11 +182,11 @@ parse_opts() {
 
     case ${OPT_CMD} in
         "run"    ) 
-            source $(dirname $0)/src/cmd_run;
+            source "$(dirname "$0")/src/cmd_run";
             cmd_run_main;
         ;;
         "report" )
-            source $(dirname $0)/src/cmd_report;
+            source "$(dirname "$0")/src/cmd_report";
             cmd_report_main;
         ;;
     esac
@@ -193,24 +200,20 @@ parse_opt_cluster() {
         * ) echo "Create target was not found. Use one of: create|destroy"; exit 1 ;;
     esac
 
-    CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=`getopt -n 'oco' \
+    if ! opts=$(getopt -n 'oco' \
             -o hdcdf \
             --long config,debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
-            -- "$@"`
-
-    if [ $? != 0 ] ; then
+            -- "$@"); then
         echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
         exit 1 ;
     fi
-    eval set -- "${GETOPT_SET}"
+    eval set -- "${opts}"
 
     while true; do
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
-            -d | --debug        ) OPT_DEBUG=true; shift ;;
             --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
             --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
@@ -237,7 +240,7 @@ parse_opt_cluster() {
         echo "Using KUBECONFIG=${KUBECONFIG}"
     fi
     set_globals_argparsed
-    source $(dirname $0)/src/cmd_cluster
+    source "$(dirname "$0")/src/cmd_cluster"
     cmd_cluster_main
 }
 
@@ -253,5 +256,5 @@ parse_cmds() {
     esac
 }
 
-test -f $(dirname $0)/.env && source $(dirname $0)/.env
+test -f "$(dirname "$0")/.env" && source "$(dirname "$0")/.env"
 parse_cmds "$@"
