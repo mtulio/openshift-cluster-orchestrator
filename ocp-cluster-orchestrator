@@ -69,6 +69,10 @@ Examples:
         --cluster-profile aws_m5x1xgp2 \\
         --cluster-name m5x1xgp2
 
+    # Create a cluster
+    ${0} cluster destroy \\
+        --cluster-name m5x1xgp2
+
     # Create a cluster and run the test
     ${0} cluster create \\
         --cluster-profile aws_m5x1xgp2 \\
@@ -135,7 +139,7 @@ parse_opts() {
     CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=`getopt -n 'ocp-benchmark' \
+    GETOPT_SET=`getopt -n 'oco' \
             -o hd \
             --long debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
             -- "$@"`
@@ -191,7 +195,7 @@ parse_opt_cluster() {
     CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=`getopt -n 'ocp-benchmark' \
+    GETOPT_SET=`getopt -n 'oco' \
             -o hdcdf \
             --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
             -- "$@"`
