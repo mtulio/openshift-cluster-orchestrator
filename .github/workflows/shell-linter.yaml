@@ -2,7 +2,7 @@
 name: shell-linter
 on: [push]
 jobs:
-  lint:
+  ShellCheckLinter:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
