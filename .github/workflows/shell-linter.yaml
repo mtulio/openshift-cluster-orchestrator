@@ -7,6 +7,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v1
+      - name: Create and populate .env file
+        run: |
+          cp ./.env-sample ./.env
+        shell: bash
       - name: Run Shellcheck main
         uses: azohra/shell-linter@latest
         with:
