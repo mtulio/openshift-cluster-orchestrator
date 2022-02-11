@@ -82,6 +82,11 @@ cluster_profiles:
     name: aws_dev_latest
     installer: openshift-install-master
     platform: aws
+  aws_dev_410rc0:
+    name: aws_dev_latest
+    installer: openshift-install-4.10.0-rc.0
+    oc: oc-4.10.0-rc.0
+    platform: aws
 
   ### CCO
   aws_dev_cco_sts:
@@ -190,30 +195,14 @@ cluster_profiles:
 
 #
 # Task profiles
+# > Define the profile of jobs which will be executed.
 #
 task_profiles:
   # FIO embeeded on etcd-perf image
-  fio_etcd_defaults:
+  ocp_fio_etcd_defaults:
     image: quay.io/openshift-scale/etcd-perf
     base_dir: "/var/lib/etcd/"
     loop: 1
-
-  # FIO write test
-  # it will stress the volume to reach the burst
-  fio_defaults:
-    image: ljishen/fio
-    base_dir: "/var/lib/etcd/"
-    loop: 10
-    commands: |
-      --rw=write \
-      --ioengine=sync \
-      --fdatasync=1 \
-      --size=200m \
-      --bs=2300 \
-      --directory=\"\$TEST_DIR\" \
-      --name=\"fio_io_\${l}\${i}\" \
-      --output-format=json \
-      --output=\"\$TEST_DIR/fio_results_write_\${l}\${i}.json\" ;
 
   # AWS Doc (init ebs)
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
@@ -231,19 +220,56 @@ task_profiles:
       --size=3276m \
 
   #> AWS Docs / rec bench test
-  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
-  # TODO: how to Disable C-states in RHCOS?
-  fio_psync_randwrite:
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html*
+  # ToDo: how to Disable C-states in RHCOS?
+  # Description: time based tests using the max IOPS as possible to read/write
+  # **file** of `size` with total allocated data of `size * numjobs`
+  # This setup is enough to reach 3k IOPS and keep the Queue lenght low: not so higuer than
+  # (MaxIOPS/1k) = ~3. The CPU Usage will also keep 100% of all cores for m5.x
+  # *the `numjobs` was changed from 16 to 5 to avoid high queue lenght.
+  aws_gp_fio_psync_randwrite:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/_benchmark"
     loop: 1
     commands: |
-      --rw=randwrite \
       --ioengine=psync \
-      --bs=16k \
+      --rw=randwrite \
       --direct=1 \
+      --bs=16k \
       --size=1G \
-      --numjobs=16 \
+      --numjobs=5 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  aws_gp_fio_psync_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --ioengine=psync \
+      --rw=randread \
+      --direct=1 \
+      --bs=16k \
+      --size=1G \
+      --numjobs=5 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  aws_gp_fio_psync_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --ioengine=psync \
+      --rw=randrw \
+      --direct=1 \
+      --bs=16k \
+      --size=1G \
+      --numjobs=5 \
       --time_based \
       --runtime=180 \
       --group_reporting \
@@ -462,7 +488,7 @@ benchmark_profiles:
     task_profiles:
       #- fio_libaio_read
       #- fio_libaio_rw
-      #- fio_etcd_defaults
+      #- ocp_fio_etcd_defaults
       - aws_fio_randrw
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
@@ -473,7 +499,7 @@ benchmark_profiles:
     task_profiles:
       #- aws_ebs_initialize
       #- fio_libaio_rw
-      #- fio_etcd_defaults
+      #- ocp_fio_etcd_defaults
       - aws_fio_randrw
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
@@ -505,6 +531,15 @@ benchmark_profiles:
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: '*'
+
+  fio_psync_singleMaster:
+    task_profiles:
+      - aws_gp_fio_psync_randread
+      - aws_gp_fio_psync_randwrite
+      - aws_gp_fio_psync_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: 0
 
   # TODO new way to define tasks (dict instead of list), so now
   # it's possible to repeat one task profile in one Job execution

@@ -29,7 +29,7 @@ run_fio() {
 
   local task_base_dir=$(yq -r ".task_profiles.${task_name}.base_dir" ${GLOBAL_CONFIG})
   local task_loop=$(yq -r ".task_profiles.${task_name}.loop" ${GLOBAL_CONFIG})
-  if [[ ! -s ${OPT_TASK_LOOP:-} ]]; then
+  if [[ ! -z ${OPT_TASK_LOOP:-} ]]; then
     task_loop=${OPT_TASK_LOOP}
   fi
   local task_benckmark_base_path="${task_base_dir}/_benchmark"
@@ -101,7 +101,15 @@ task_fio_libaio_randrw() {
   run_fio "$@"
 }
 
-task_fio_psync_randwrite() {
+task_aws_gp_fio_psync_randwrite() {
+  run_fio "$@"
+}
+
+task_aws_gp_fio_psync_randread() {
+  run_fio "$@"
+}
+
+task_aws_gp_fio_psync_randrw() {
   run_fio "$@"
 }
 

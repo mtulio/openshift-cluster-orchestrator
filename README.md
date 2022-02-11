@@ -17,6 +17,15 @@ Use cases:
   * test different instance types with a custom Installer binary
 - help on daily tasks spinning-up clusters configuration
 
+## Install
+
+### Requirements
+
+- yq == 2.x
+- jq
+- openshift-installer
+- oc
+
 ## Usage
 
 Create the `.env` file with our credentials.
@@ -141,16 +150,18 @@ All the results will be collected to local storage path: `.local/results`, if gr
 
 Examples:
 
-- Create a job [`c1`] binding benchmark profile [`fio_allTasks_masterNodes`] to a cluster [`c1gp2x1`]:
+1) Create a job named `fio_ebs_gp` binding benchmark profile `fio_psync_singleMaster` to run on the cluster [`ocp_aws`]:
 
 ~~~bash
 oco run \
-    --cluster-name c1gp2x1 \
-    --job-name c1 \
-    --benchmark-profile fio_allTasks_masterNodes
+    --cluster-name ocp_aws \
+    --job-name fio_ebs_gp \
+    --benchmark-profile fio_psync_singleMaster
 ~~~
 
-- Create many jobs and group the results into the same directory (`.local/results/byGroup-b3`):
+The profile `fio_psync_singleMaster` runs [the recommended](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html) benckmark using FIO on General Pourpose (gp) EBS on AWS, using the engine `psync` with operations `randread`, `randwrite` and `randrw` (random read or/and write).
+
+2) Create many jobs and group the results into the same directory (`.local/results/byGroup-b3`):
 
 ~~~bash
 oco run \
@@ -166,7 +177,7 @@ oco run \
     --benchmark-profile fio_allTasks_masterNodes
 ~~~
 
-- override the loop count value from a task definition to `10`, which means to run each task 10 times, instead of `1`(default):
+3) override the loop count value from a task definition to `10`, which means to run each task 10 times, instead of `1`(default):
 
 ~~~bash
 oco run \
@@ -176,7 +187,6 @@ oco run \
     --benchmark-profile fio_allTasks_masterNodes
     --task-loop 10
 ~~~
-
 
 ## Customization
 
