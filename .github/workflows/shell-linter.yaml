@@ -18,4 +18,4 @@ jobs:
       - name: Run Shellcheck on src
         uses: azohra/shell-linter@latest
         with:
-          scandir: './src'
+          path: './src'
