@@ -141,7 +141,7 @@ parse_opts() {
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'oco' \
             -o hd \
-            --long debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
+            --long config,debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
             -- "$@"`
 
     if [ $? != 0 ] ; then
@@ -155,6 +155,7 @@ parse_opts() {
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
             -d | --debug        ) OPT_DEBUG=true; shift ;;
+            --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --job-name          ) OPT_JOB_NAME="$2"; shift 2 ;;
             --job-group         ) OPT_JOB_GROUP="$2"; shift 2 ;;
             --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
@@ -197,7 +198,7 @@ parse_opt_cluster() {
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'oco' \
             -o hdcdf \
-            --long debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
+            --long config,debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
             -- "$@"`
 
     if [ $? != 0 ] ; then
@@ -210,6 +211,7 @@ parse_opt_cluster() {
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
             -d | --debug        ) OPT_DEBUG=true; shift ;;
+            --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
             --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
             --kubeconfig        ) OPT_KUBECONFIG=true; shift ;;

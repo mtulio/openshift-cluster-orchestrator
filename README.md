@@ -1,29 +1,29 @@
 # openshift-cluster-orchestrator
 
-Tool that run obove openshift-installer to orchestrate the configuration pre-install applying configuration in the manifests, or patchs on the manifests before triggering the `create cluster`.
+A tool that runs above `openshift-installer` to orchestrate the configuration pre-install applying configuration in the manifests, or patches on the manifests before triggering the `create cluster`.
 
-The tool also orchestrate initial benchmark jobs to a fresh cluster, for example running benchmark in specific components like: disks, etcd, node CPU, etc, interacting with projects:
+The tool also orchestrates initial benchmark jobs to a fresh cluster, for example running the benchmark in specific components like disks, etcd, node CPU, etc, interacting with projects:
 - openshift-installer
 - FIO
 - benchmark-operator
 
-The cluster configuration will be created dinamicaly with a pre-set of cluster profiles (customized), once the cluster is provisioned, it will  start a set of pre-defined tests and collect the results locally.
+The cluster configuration will be created dynamically with a pre-set of cluster profiles (customized), once the cluster is provisioned, it will start a set of pre-defined tests and collect the results locally.
 
-The scripts run on top o openshift-installer using IPI method.
+The scripts run on top of `openshift-installer` using IPI method.
 
 Use cases:
 - benchmark specific components from a cloud provider. Eg:
-  * benchamark AWS disks gp2 and gp3, then compare with Azure disks
+  * benchmark AWS disks gp2 and gp3, then compare with Azure disks
   * test different instance types with a custom Installer binary
-- help on daily tasks spining-up clusters configuration
+- help on daily tasks spinning-up clusters configuration
 
 ## Usage
 
-Edit the .env file with our credentials:
+Create the `.env` file with our credentials.
 
-~~~
+~~~bash
 cp .env-sample .env
-vim .env
+# adjust .env
 ~~~
 
 The variables must be set:
@@ -35,25 +35,25 @@ The variables must be set:
 
 ### `cluster` command
 
-The `cluster` command will abastract openshift-installer tasks, creating dynamic configuration based on cluster profiles.
+The `cluster` command will abstract `openshift-installer` tasks, creating dynamic configuration based on cluster profiles, rendering a custom configuration based on pre-defined profiles from `config.yaml`.
 
-The rendered configuration for a cluster will be saved on local storage `.local/cluster`, that contains:
-- `${cluster}_rendered-runner-config.yaml`: dynamic variables created to be used to mount the install-config.yaml
-- `${cluster}_install-config.yaml`: rendered install-config.yaml created by pre-defined profile
-- `${cluster}/`: directory of `install-dir` openshift-installer option, that holds all installer stuffs
+The structure below will be created for each cluster and saved on local storage, `.local/cluster/` directory:
+- `${cluster}_rendered-runner-config.yaml`: dynamic variables created to be used to mount the `install-config.yaml`
+- `${cluster}_install-config.yaml`: rendered `install-config.yaml` created by pre-defined profile (backup of original)
+- `${cluster}/`: directory of `--install-dir` argument from `openshift-installer`. This path will hold all installer stuff
 - `${cluster}-${TIMESTAMP}.tar.xz`: backup of data created before destroy/delete clusters
 
 #### `cluster create`
 
 > similar `openshift-install create cluster`
 
-This command creates the install-config.yaml and run `openshift-install create cluster`.
+This command creates the `install-config.yaml` and runs `openshift-install create cluster`.
 
 **Examples:**
 
 - Create a cluster named `c2awsm5x2xgp2` with profile `aws_m5x2xgp2`
 
-~~~
+~~~bash
 oco cluster create \
     --cluster-profile aws_m5x2xgp2 \
     --cluster-name c2awsm5x2xgp2 --force
@@ -61,7 +61,7 @@ oco cluster create \
 
 - Create a cluster in AWS with manual STS mode:
 
-~~~
+~~~bash
 oco cluster create \
     --cluster-profile labccosts \
     --cluster-name aws_dev_cco_sts
@@ -78,7 +78,7 @@ oco cluster create \
 
 Link existing cluster configuration (`$KUBECONFIG`) to `.local/cluster/{cluster-name}/auth/kubeconfig`
 
-Create a pseudo cluster to be used on this project. That command will read the `${KUBECONFIG}` env var and create a local configuration on , then it will be possible to run tests in existing clusters / skiping provisioning flow.
+Create a pseudo cluster to be used on this project. This command reads the `${KUBECONFIG}` env var and creates a local configuration on local storage, then it will be possible to run tests in existing clusters / skipping provisioning flow.
 
 #### `cluster setup`
 
@@ -92,13 +92,22 @@ oco cluster setup \
     --cluster-name c2awsm5x2xgp2
 ~~~
 
-Then, check-out the changes and run the `cluster install`.
+If `OPT_CLUSTER_IGNITION_ONLY` is set, the ignition-configs will be created:
+
+~~~bash
+OPT_CLUSTER_IGNITION_ONLY=true
+oco cluster setup \
+    --cluster-profile aws_m5x2xgp2 \
+    --cluster-name c2awsm5x2xgp2
+~~~
+
+Then, check out the changes and run the `cluster install`.
 
 #### `cluster install`
 
 > similar `openshift-install create cluster`
 
-Install a cluster from a already created install dir:
+Install a cluster from an already created install dir:
 
 ~~~
 oco cluster install \
@@ -110,23 +119,23 @@ oco cluster install \
 
 - Remove a cluster:
 
-~~~
-ocp-benchmark cluster destroy --cluster-name c2awsm5x2xgp2
+~~~bash
+oco cluster destroy --cluster-name c2awsm5x2xgp2
 ~~~
 
 #### `cluster check / ping`
 
-- Check / ping current cluster
+- Check/ping current cluster
 
-~~~
-ocp-benchmark cluster ping --cluster-name c2awsm5x2xgp2
+~~~bash
+oco cluster ping --cluster-name c2awsm5x2xgp2
 ~~~
 
 ### `run` command
 
 #### run jobs to the cluster
 
-Jobs will bind the cluster (previous created/linked) with `benchmark_profile`, which defines what tasks will run on the cluster. It's possible to run N jobs to the same cluster, the `job-name` should be unique on the project.
+Jobs will bind the cluster (previously created/linked) with `benchmark_profile`, which defines what tasks will run on the cluster. It's possible to run N jobs to the same cluster, the `job-name` should be unique on the project.
 
 All the results will be collected to local storage path: `.local/results`, if grouped (`job-group`) will be `.local/results/byGroup-${group_name}`
 
@@ -134,8 +143,8 @@ Examples:
 
 - Create a job [`c1`] binding benchmark profile [`fio_allTasks_masterNodes`] to a cluster [`c1gp2x1`]:
 
-~~~
-./ocp-benchmark run \
+~~~bash
+oco run \
     --cluster-name c1gp2x1 \
     --job-name c1 \
     --benchmark-profile fio_allTasks_masterNodes
@@ -143,14 +152,14 @@ Examples:
 
 - Create many jobs and group the results into the same directory (`.local/results/byGroup-b3`):
 
-~~~
-./ocp-benchmark run \
+~~~bash
+oco run \
     --cluster-name c1gp2x1 \
     --job-name c1 \
     --job-group b3 \
     --benchmark-profile fio_allTasks_masterNodes
 
-./ocp-benchmark run \
+oco run \
     --cluster-name c3gp3x1 \
     --job-name c3 \
     --job-group b3 \
@@ -159,8 +168,8 @@ Examples:
 
 - override the loop count value from a task definition to `10`, which means to run each task 10 times, instead of `1`(default):
 
-~~~
-./ocp-benchmark run \
+~~~bash
+oco run \
     --cluster-name c3gp3x1 \
     --job-name c3 \
     --job-group b3 \
@@ -171,21 +180,19 @@ Examples:
 
 ## Customization
 
-You can edit any `config.yaml` parameter to create customized cluster installation.
+You can edit any `config.yaml` parameter to create a customized cluster installation.
 
-> TODO add --config option to point to a custom config.
-
-Please see bellow some examples to customize the project.
+Please see below some examples to customize the project.
 
 ### create a new cluster profile
 
 You may need to create a custom cluster profile when:
-- change instance type
+- change the instance type
 - change volume type
-- run custom patchs
+- run custom patches
 - run a custom installer
 
-1. create a task function in `src/cluster_jobs`. Function should have name prefix `task_`
+1. create a task function in `src/cluster_jobs`. The function should have the name prefix `task_`
 2. create a task profile in `config.yaml: task_profiles.${name}`
 3. bind the new task to a benchmark profile: `benchmark_profiles.${name}.task_profiles[]`
 
@@ -195,24 +202,25 @@ You may need to create a custom cluster profile when:
 2. create a task profile in `config.yaml: task_profiles.${name}`
 3. bind the new task to a benchmark profile: `benchmark_profiles.${name}.task_profiles[]`
 
-### create a new benchmark profile (TODO rename to 'job profile')
 
-### create a create new manifest patch
-
-> TODO
-
-# FAQ
+## FAQ
 
 Q: How the tasks will run into the cluster?
-A: Depends on the task executior (function that define the task in `src/cluster_jobs` named `task_${task_name}`). The FIO implementation will run each task profile using `oc debug` thoughts, keeping the connection opened until it finished. It's possible to schedule a job and whait to finish, but not supported currently.
+A: Depends on the task executor (function that define the task in `src/cluster_jobs` named `task_${task_name}`). The FIO implementation will run each task profile using `oc debug` thoughts, keeping the connection opened until it is finished. It's possible to schedule a job and wait to finish, but not supported currently.
 
-Q: Is the tasks run in parallel?
+Q: Are the tasks run in parallel?
 A: No, the tasks will run one-by-one from the `task_profiles` defined on `benchmark_profile`, regardless if has been failed.
 
-Q: Is the jobs run in parallel?
-A: Yes, the jobs will run in paralel on each node defined on `target_node_strategy`
+Q: Are the jobs run in parallel?
+A: Yes, the jobs will run in parallel on each node defined on `target_node_strategy`
 
 Q: Does this project override the installer?
-A: No, it automate the process to handle customizations (patch manifests, using custom builds, etc) on installer to run benchmark jobs in different clusters
+A: No, it automates the process to handle customizations (patch manifests, using custom builds, etc) on the installer to run benchmark jobs in different clusters
 
 
+<!--
+ToDo:
+### create a new benchmark profile (TODO rename to 'job profile')
+### create a new manifest patch
+> TODO
+--!>
