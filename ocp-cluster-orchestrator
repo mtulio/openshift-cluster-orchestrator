@@ -185,11 +185,11 @@ parse_opts() {
 
     case ${OPT_CMD} in
         "run"    ) 
-            source $(dirname $0)/src/cmd_run;
+            source "$(dirname "$0")/src/cmd_run";
             cmd_run_main;
         ;;
         "report" )
-            source $(dirname $0)/src/cmd_report;
+            source "$(dirname "$0")/src/cmd_report";
             cmd_report_main;
         ;;
     esac
@@ -245,7 +245,7 @@ parse_opt_cluster() {
         echo "Using KUBECONFIG=${KUBECONFIG}"
     fi
     set_globals_argparsed
-    source $(dirname $0)/src/cmd_cluster
+    source "$(dirname "$0")/src/cmd_cluster"
     cmd_cluster_main
 }
 
@@ -261,5 +261,5 @@ parse_cmds() {
     esac
 }
 
-test -f $(dirname $0)/.env && source $(dirname $0)/.env
+test -f "$(dirname "$0")/.env" && source "$(dirname "$0")/.env"
 parse_cmds "$@"
