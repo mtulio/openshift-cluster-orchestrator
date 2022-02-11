@@ -145,6 +145,13 @@ set_globals_argparsed() {
 #
 # cli parsers
 #
+check_getopt_resp() {
+    if [ $? != 0 ] ; then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+}
+
 
 parse_opts() {
 
@@ -155,10 +162,7 @@ parse_opts() {
             --long config,debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
             -- "$@")
 
-    if [ $? != 0 ] ; then
-        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
-        exit 1 ;
-    fi
+    check_getopt_resp
     eval set -- "${GETOPT_SET}"
 
     set_globals_init
@@ -210,10 +214,7 @@ parse_opt_cluster() {
             --long config,debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
             -- "$@")
 
-    if [ $? != 0 ] ; then
-        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
-        exit 1 ;
-    fi
+    check_getopt_resp
     eval set -- "${GETOPT_SET}"
 
     while true; do
