@@ -232,16 +232,48 @@ task_profiles:
 
   #> AWS Docs / rec bench test
   # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/benchmark_procedures.html
-  # TODO: how to Disable C-states in RHCOS?
-  fio_psync_randwrite:
+  # ToDo: how to Disable C-states in RHCOS?
+  aws_gp_fio_psync_randwrite:
     image: ljishen/fio
     base_dir: "/var/lib/etcd/_benchmark"
     loop: 1
     commands: |
-      --rw=randwrite \
       --ioengine=psync \
-      --bs=16k \
+      --rw=randwrite \
       --direct=1 \
+      --bs=16k \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  aws_gp_fio_psync_randread:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --ioengine=psync \
+      --rw=randread \
+      --direct=1 \
+      --bs=16k \
+      --size=1G \
+      --numjobs=16 \
+      --time_based \
+      --runtime=180 \
+      --group_reporting \
+      --norandommap \
+
+  aws_gp_fio_psync_randrw:
+    image: ljishen/fio
+    base_dir: "/var/lib/etcd/_benchmark"
+    loop: 1
+    commands: |
+      --ioengine=psync \
+      --rw=randrw \
+      --direct=1 \
+      --bs=16k \
       --size=1G \
       --numjobs=16 \
       --time_based \
@@ -505,6 +537,15 @@ benchmark_profiles:
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: '*'
+
+  fio_psync_singleMaster:
+    task_profiles:
+      - aws_gp_fio_psync_randread
+      - aws_gp_fio_psync_randwrite
+      - aws_gp_fio_psync_randrw
+    target_node_strategy:
+      filter_by_label: node-role.kubernetes.io/master=
+      index: 0
 
   # TODO new way to define tasks (dict instead of list), so now
   # it's possible to repeat one task profile in one Job execution
