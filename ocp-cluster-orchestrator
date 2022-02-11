@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 #
 # OCP cluster orchestrator and benchmark job runner.
