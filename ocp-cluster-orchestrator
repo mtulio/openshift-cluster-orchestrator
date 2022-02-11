@@ -145,25 +145,18 @@ set_globals_argparsed() {
 #
 # cli parsers
 #
-check_getopt_resp() {
-    if [ $? != 0 ] ; then
-        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
-        exit 1 ;
-    fi
-}
-
-
 parse_opts() {
 
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=$(getopt -n 'oco' \
+    if ! opts=$(getopt -n 'oco' \
             -o hd \
             --long config,debug,help,run,dump-prometheus,cluster-name:,job-name:,job-group:,benchmark-profile:,task-loop:, \
-            -- "$@")
-
-    check_getopt_resp
-    eval set -- "${GETOPT_SET}"
+            -- "$@"); then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+    eval set -- "${opts}"
 
     set_globals_init
     while true; do
@@ -209,13 +202,14 @@ parse_opt_cluster() {
 
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
-    GETOPT_SET=$(getopt -n 'oco' \
+    if ! opts=$(getopt -n 'oco' \
             -o hdcdf \
             --long config,debug,help,cluster-name:,cluster-profile:,kubeconfig,force,only-manifests,only-ignitions, \
-            -- "$@")
-
-    check_getopt_resp
-    eval set -- "${GETOPT_SET}"
+            -- "$@"); then
+        echo "gnu-getopt seems not to be present. Please install it. Terminating..." >&2 ;
+        exit 1 ;
+    fi
+    eval set -- "${opts}"
 
     while true; do
         case "$1" in
