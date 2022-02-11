@@ -67,5 +67,9 @@ cmd_run_main() {
   wait "${RUN_PIDS[@]}"
   echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Done tests ran in all nodes" | tee -a ${job_stdout}
 
-  task_prometheus_dump || true
+  if [[ ${PROMETHEUS_DUMP:-false} == true ]]; then
+    task_prometheus_dump || true
+  else
+    echo "Ignoring Prometheus dump."
+  fi
 }
