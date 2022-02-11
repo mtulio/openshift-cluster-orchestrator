@@ -148,7 +148,6 @@ set_globals_argparsed() {
 
 parse_opts() {
 
-    CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'oco' \
@@ -166,7 +165,6 @@ parse_opts() {
     while true; do
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
-            -d | --debug        ) OPT_DEBUG=true; shift ;;
             --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --job-name          ) OPT_JOB_NAME="$2"; shift 2 ;;
             --job-group         ) OPT_JOB_GROUP="$2"; shift 2 ;;
@@ -205,7 +203,6 @@ parse_opt_cluster() {
         * ) echo "Create target was not found. Use one of: create|destroy"; exit 1 ;;
     esac
 
-    CURRENT_OPTS="$@"
     # NOTE: This requires GNU getopt.
     # '-> On Mac OS X and FreeBSD need to be installed as: brew install gnu-getopt
     GETOPT_SET=`getopt -n 'oco' \
@@ -222,7 +219,6 @@ parse_opt_cluster() {
     while true; do
         case "$1" in
             -h | --help         ) show_help; exit 2 ;;
-            -d | --debug        ) OPT_DEBUG=true; shift ;;
             --config            ) GLOBAL_CONFIG="$2" ; shift 2 ;;
             --cluster-name      ) OPT_CLUSTER_NAME="$2" ; shift 2 ;;
             --cluster-profile   ) OPT_CLUSTER_PROFILE="$2"; shift 2 ;;
