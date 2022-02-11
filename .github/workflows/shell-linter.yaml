@@ -1,8 +1,9 @@
-# https://github.com/marketplace/actions/shell-linter
-name: shell-linter
+name: linters
 on: [push]
 jobs:
-  ShellCheckLinter:
+
+  # https://github.com/marketplace/actions/shell-linter
+  linter-ShellCheck:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -15,7 +16,23 @@ jobs:
         uses: azohra/shell-linter@latest
         with:
           path: "ocp-cluster-orchestrator"
-      - name: Run Shellcheck on src
+      - name: Run Shellcheck on /src
         uses: azohra/shell-linter@latest
         with:
           path: './src'
+
+  # https://github.com/marketplace/actions/yaml-lint
+  linter-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: yaml-lint-config
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: config.yaml
+          config_file: .github/workflows/yaml-linter-config.yml
+      - name: yaml-lint-ci
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: .github/workflows/*.yaml
+          config_file: .github/workflows/yaml-linter-config.yml
