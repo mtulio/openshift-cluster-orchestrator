@@ -108,26 +108,40 @@ EOF
 set_globals_init() {
 
     # Global config
-    declare -g GLOBAL_CONFIG="${PWD}/config.yaml"
+    declare -g GLOBAL_CONFIG
+    GLOBAL_CONFIG="${PWD}/config.yaml"
 
     # Workdir
-    declare -g WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
-    declare -g WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
-    declare -g WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
-    declare -g WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
+    declare -g WORKDIR
+    declare -g WORKDIR_CLUSTERS
+    declare -g WORKDIR_JOBS
+    declare -g WORKDIR_RESULTS
+
+    WORKDIR="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})"
+    WORKDIR_CLUSTERS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/clusters"
+    WORKDIR_JOBS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/jobs"
+    WORKDIR_RESULTS="${PWD}/$(yq -r .config.workdir ${GLOBAL_CONFIG})/results"
 
     # Installer options
-    declare -g OPT_CLUSTER_CMD=""
-    declare -g OPT_KUBECONFIG=false
-    declare -g OPT_FORCE=false
+    declare -g OPT_CLUSTER_CMD
+    declare -g OPT_KUBECONFIG
+    declare -g OPT_FORCE
+
+    OPT_CLUSTER_CMD=""
+    OPT_KUBECONFIG=false
+    OPT_FORCE=false
 
 }
 
 # Set globals with arg parsed
 set_globals_argparsed() {
-    declare -g CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
-    declare -g CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
-    declare -g CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
+    declare -g CLUSTER_HOME
+    declare -g CLUSTER_KUBECONFIG
+    declare -g CLUSTER_CFG_RENDERED
+
+    CLUSTER_HOME=${WORKDIR_CLUSTERS}/${OPT_CLUSTER_NAME:-}
+    CLUSTER_KUBECONFIG=${CLUSTER_HOME}/auth/kubeconfig
+    CLUSTER_CFG_RENDERED="${CLUSTER_HOME}_rendered-runner-config.yaml"
 }
 
 #
