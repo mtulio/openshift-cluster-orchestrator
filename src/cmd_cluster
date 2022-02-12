@@ -71,6 +71,12 @@ cluster_hooks_before_destroy() {
 }
 
 cluster_hooks_after_destroy() {
+
+  if [[ -z ${OPT_CLUSTER_PROFILE:-} ]]; then
+    #echo "Ignoring after destroy hook check";
+    return
+  fi
+
   source $(dirname $0)/src/cluster_patchs
   for hook in $(yq -r ".cluster_profiles.${OPT_CLUSTER_PROFILE}.after_destroy_hooks[]?" ${GLOBAL_CONFIG}); do
     echo "Running hook [${hook}]"

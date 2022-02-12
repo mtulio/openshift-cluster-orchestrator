@@ -481,7 +481,145 @@ task_profiles:
       --group_reporting \
       --norandommap \
 
+  #> Benchmark Operator
+  #>> e2e-benckmarking
+  #>>> etcd_perf
+  ocp_e2e_bench_etcd_perf:
+    git_url: git@github.com:cloud-bulldozer/e2e-benchmarking.git
+    path: workloads/etcd-perf/
+    run_cmd: ./run_etcd_tests_fromgit.sh
+
+  #>>> sysbench tasks
+  #>>>> CPU
+  ocp_e2e_bench_sysbench_cpu_speed:
+    test_name: sysbench-cpu
+    test_description: |
+      The cpu test is one of the most simple benchmarks in SysBench.
+      In this mode each request consists in calculation of prime numbers
+      up to a value specified by the --cpu-max-primes option. All
+      calculations are performed using 64-bit integers. Each thread
+      executes the requests concurrently until either the total number
+      of requests or the total execution time exceed the limits specified
+      with the common command line options.
+      Speed test will check the amount of time to reach the CPU max prime.
+    tests:
+    # single thread
+      - name: cpu
+        parameters:
+          cpu-max-prime: 2000
+          threads: 1
+      - name: cpu
+        parameters:
+          cpu-max-prime: 10000
+          threads: 1
+      - name: cpu
+        parameters:
+          cpu-max-prime: 20000
+          threads: 1
+      # multithread
+      - name: cpu
+        parameters:
+          cpu-max-prime: 2000
+          threads: 2
+      - name: cpu
+        parameters:
+          cpu-max-prime: 10000
+          threads: 2
+      - name: cpu
+        parameters:
+          cpu-max-prime: 20000
+          threads: 2
+
+  ocp_e2e_bench_sysbench_cpu_stress:
+    test_name: sysbench-cpu
+    test_description: |
+      The cpu test is one of the most simple benchmarks in SysBench.
+      In this mode each request consists in calculation of prime numbers
+      up to a value specified by the --cpu-max-primes option. All
+      calculations are performed using 64-bit integers. Each thread
+      executes the requests concurrently until either the total number
+      of requests or the total execution time exceed the limits specified
+      with the common command line options.
+      Stress test will ramp up from single-thread to multi-thread in a fixed
+      period until max prime. Total threads could be adjusted to fit current
+      hardware. Ideally N*CPUs to reach the max stress on the system.
+    tests:
+    # single thread
+      - name: cpu
+        parameters:
+          cpu-max-prime: 2000
+          threads: 1
+          time: 60
+      - name: cpu
+        parameters:
+          cpu-max-prime: 10000
+          threads: 1
+          time: 60
+      - name: cpu
+        parameters:
+          cpu-max-prime: 20000
+          threads: 1
+          time: 60
+      # multithread
+      - name: cpu
+        parameters:
+          cpu-max-prime: 2000
+          threads: 2
+          time: 60
+      - name: cpu
+        parameters:
+          cpu-max-prime: 10000
+          threads: 2
+          time: 60
+      - name: cpu
+        parameters:
+          cpu-max-prime: 20000
+          threads: 2
+          time: 60
+
+  #>>> Mem
+  ocp_e2e_bench_sysbench_mem_speed:
+    test_name: sysbench-mem-speed
+    test_description: |
+      Memory allocation and transfer speed.
+    tests:
+      # Mem:Read_1KiB
+      - name: memory
+        parameters:
+          threads: 2
+          memory-oper: read
+          memory-scope: global
+          memory-block-size: 1KiB
+          memory-total-size: 204800MiB
+      # Mem:Read_1MiB
+      - name: memory
+        parameters:
+          threads: 2
+          memory-oper: read
+          memory-scope: global
+          memory-block-size: 1024KiB
+          memory-total-size: 1024000MiB
+      # Mem:Write_1KiB
+      - name: memory
+        parameters:
+          threads: 2
+          memory-oper: write
+          memory-scope: global
+          memory-block-size: 1KiB
+          memory-total-size: 102400MiB
+      # Mem:Write_1MiB
+      - name: memory
+        parameters:
+          threads: 2
+          memory-oper: write
+          memory-scope: global
+          memory-block-size: 1024KiB
+          memory-total-size: 409600MiB
+
+
+##########################################
 #> Profiles
+##########################################
 benchmark_profiles:
   # RUN jobs on one control plane
   fio_etcd_one_cp:
@@ -540,6 +678,26 @@ benchmark_profiles:
     target_node_strategy:
       filter_by_label: node-role.kubernetes.io/master=
       index: 0
+
+  # Workload etcd-perf
+  ocp_e2e_benchmarking_wk_etcd_perf:
+    task_profiles:
+      - ocp_e2e_bench_etcd_perf
+    target_node_strategy:
+      target_type: cluster
+
+  # Workload sysbench-cpu
+  # https://github.com/cloud-bulldozer/benchmark-operator/blob/master/docs/sysbench.md
+  # https://github.com/mtulio/e2e-benchmarking/tree/feat-sysbench-cpu/workloads/cpu-perf
+  # https://www.vpsbenchmarks.com/trials/amazon_ec2_performance_trial_22Nov2020/sysbench
+  # bash -x ./oco run --cluster-name mrb410rc0 --job-name e2e_sysbench  --benchmark-profile ocp_e2e_benchmarking_workload_sysbench
+  ocp_e2e_benchmarking_workload_sysbench:
+    task_profiles:
+      #- ocp_e2e_bench_sysbench_cpu_speed
+      #- ocp_e2e_bench_sysbench_cpu_stress
+      - ocp_e2e_bench_sysbench_mem_speed
+    target_node_strategy:
+      target_type: cluster
 
   # TODO new way to define tasks (dict instead of list), so now
   # it's possible to repeat one task profile in one Job execution

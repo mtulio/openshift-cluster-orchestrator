@@ -14,6 +14,46 @@ function ctrl_c_handler() {
 }
 trap ctrl_c_handler SIGINT
 
+cmd_run_node() {
+ local nodes=($(${oc_cmd} get nodes -l ${node_label} -o jsonpath="{.items[${node_index}].metadata.name}"))
+  echo "#cluster=${OPT_CLUSTER_NAME}> Found [${#nodes[@]}] nodes: ${nodes[@]}" | tee -a ${job_stdout}
+
+  for node in ${nodes[@]}; do
+    echo "#cluster=${OPT_CLUSTER_NAME}> Running tasks as user [$($oc_cmd whoami)], API [$($oc_cmd whoami --show-server)] and node [${node}]"  | tee -a ${job_stdout}
+    ${oc_cmd} debug node/${node} -- chroot /host /bin/bash -c \
+      "hostname; lsblk" 2>/dev/null |tee -a ${job_stdout}
+    (
+
+      for task_name in $(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.task_profiles[]?" ${GLOBAL_CONFIG}); do
+        sleep_interval=60
+        task_${task_name} ${node} || (
+          echo "#${node}> ERROR detected when running the task [${task_name}], starting next one..." | tee -a ${job_stdout};
+          sleep_interval=2;
+        )
+        echo "#${node}> Sleeping [${sleep_interval}]s to run next task" | tee -a ${job_stdout}
+        sleep ${sleep_interval}; # wait Xs to run the next task. TODO: add CLI and CFG opt for it
+      done
+    ) &
+    RUN_PIDS+=($!)
+  done
+
+  echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Waiting for tests to complete in all nodes..." | tee -a ${job_stdout}
+  wait "${RUN_PIDS[@]}"
+  echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Done tests ran in all nodes" | tee -a ${job_stdout}
+
+}
+
+cmd_run_cluster() {
+  for task_name in $(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.task_profiles[]?" ${GLOBAL_CONFIG}); do
+    sleep_interval=60
+    task_${task_name} || (
+      echo "#> ERROR detected when running the task [${task_name}], starting next one..." | tee -a ${job_stdout};
+      sleep_interval=2;
+    )
+    echo "#> Sleeping [${sleep_interval}]s to run next task" | tee -a ${job_stdout}
+    sleep ${sleep_interval}; # wait Xs to run the next task.
+  done
+}
 
 cmd_run_main() {
   source $(dirname $0)/src/cluster_jobs
@@ -26,10 +66,16 @@ cmd_run_main() {
   fi
   local result_path_base="${WORKDIR_RESULTS}/${job_groupKey}${job_alias}"
   local oc_cmd="$(yq -r ".oc_path" ${CLUSTER_CFG_RENDERED}) --kubeconfig ${CLUSTER_KUBECONFIG} "
+
+  local target_type=$(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.target_node_strategy.target_type" ${GLOBAL_CONFIG})
   local node_label=$(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.target_node_strategy.filter_by_label" ${GLOBAL_CONFIG})
   local node_index=$(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.target_node_strategy.index" ${GLOBAL_CONFIG})
   local job_stdout=${result_path_base}/job_stdout-${OPT_JOB_NAME}-${OPT_CLUSTER_NAME}.txt
-  
+
+  if [[ -z "${target_type}" ]] || [[ "${target_type}" == "null" ]]; then
+    target_type="node"
+  fi
+
   mkdir -p ${result_path_base};
   chmod o+rw ${result_path_base}; # allow others (+scripts +containers/report)
 
@@ -41,31 +87,10 @@ cmd_run_main() {
   ${oc_cmd} get clusterversion -o yaml > ${cluster_manifests_path}/clusterversion.yaml
   ${oc_cmd} get machines -n openshift-machine-api -o yaml > ${cluster_manifests_path}/machines.yaml
 
-  local nodes=($(${oc_cmd} get nodes -l ${node_label} -o jsonpath="{.items[${node_index}].metadata.name}"))
-  echo "#cluster=${OPT_CLUSTER_NAME}> Found [${#nodes[@]}] nodes: ${nodes[@]}" | tee -a ${job_stdout}
-
-  for node in ${nodes[@]}; do
-    echo "#cluster=${OPT_CLUSTER_NAME}> Running tasks as user [$($oc_cmd whoami)], API [$($oc_cmd whoami --show-server)] and node [${node}]"  | tee -a ${job_stdout}
-    ${oc_cmd} debug node/${node} -- chroot /host /bin/bash -c \
-      "hostname; lsblk" 2>/dev/null |tee -a ${job_stdout}
-    (
-      
-      for task_name in $(yq -r ".benchmark_profiles.${OPT_BENCH_PROFILE}.task_profiles[]?" ${GLOBAL_CONFIG}); do
-        sleep_interval=60
-        task_${task_name} ${node} || (
-          echo "#${node}> ERROR detected when running the task [${task_name}], starting next one..." | tee -a ${job_stdout};
-          sleep_interval=2;
-        )
-        echo "#${node}> Sleeping [${sleep_interval}]s to run next task" | tee -a ${job_stdout}
-        sleep ${sleep_interval}; # wait 60s to run the next task. TODO: add CLI and CFG opt for it
-      done
-    ) &
-    RUN_PIDS+=($!)
-  done
-
-  echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Waiting for tests to complete in all nodes..." | tee -a ${job_stdout}
-  wait "${RUN_PIDS[@]}"
-  echo "#cluster=${OPT_CLUSTER_NAME}> INFO: Done tests ran in all nodes" | tee -a ${job_stdout}
+  case "${target_type}" in
+    "node") cmd_run_node ;;
+    "cluster") cmd_run_cluster ;;
+  esac
 
   if [[ ${PROMETHEUS_DUMP:-false} == true ]]; then
     task_prometheus_dump || true
