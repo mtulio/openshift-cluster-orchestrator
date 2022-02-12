@@ -157,3 +157,178 @@ task_prometheus_dump() {
   tar cfJ ${dump_dir}.tar.xz ${dump_dir}
   test -f ${dump_dir}.tar.xz && rm -rf ${dump_dir} 
 }
+
+#
+# Benchmark Operator
+#
+_destroy_benchmark_operator() {
+  oc delete namespace benchmark-operator --ignore-not-found
+  oc delete namespace backpack-view --ignore-not-found
+}
+
+_deploy_benchmark_operator() {
+  local bo_path=${WORKDIR_TMP}/benchmark-operator
+
+  trap "rm -rf ${bo_path}" EXIT
+  test -d ${bo_path} && rm -rf ${bo_path}
+
+  _destroy_benchmark_operator
+  rm -rf ${bo_path}
+  openshift_login
+
+  cloud_name="test_cloud"
+  oc create ns benchmark-operator
+  oc create ns backpack
+
+  git clone http://github.com/cloud-bulldozer/benchmark-operator ${bo_path} --depth 1
+  (cd ${bo_path} && make deploy)
+  kubectl apply -f ${bo_path}/resources/backpack_role.yaml
+  oc wait --for=condition=available "deployment/benchmark-controller-manager" -n benchmark-operator --timeout=300s
+
+  oc adm policy add-scc-to-user -n benchmark-operator privileged -z benchmark-operator
+  oc adm policy add-scc-to-user -n benchmark-operator privileged -z backpack-view
+
+}
+
+
+
+#> e2e-benckmarking
+#>> etcd_perf
+## github.com/cloud-bulldozer/e2e-benchmarking/workloads/etcd-perf/
+task_ocp_e2e_bench_etcd_perf() {
+
+  local project_url=$(yq -r ".task_profiles.${task_name}.git_url" ${GLOBAL_CONFIG})
+  local project_path=$(yq -r ".task_profiles.${task_name}.path" ${GLOBAL_CONFIG})
+  local run_cmd=$(yq -r ".task_profiles.${task_name}.run_cmd" ${GLOBAL_CONFIG})
+  local out=${result_path_base}/${task_name}
+  mkdir -p ${out}
+
+  test -d ${result_path_base}/e2e-benchmarking && rm -rf ${result_path_base}/e2e-benchmarking
+  git clone ${project_url} ${result_path_base}/e2e-benchmarking
+  pushd ${result_path_base}/e2e-benchmarking/${project_path}
+  ${run_cmd}
+  popd
+
+  echo "#>> $(date)" |tee -a ${out}/ns-benckmark.txt
+  oc get all -n benchmark-operator -o wide |tee -a ${out}/ns-benckmark.txt
+  oc get benchmark -n benchmark-operator etcd-fio -o yaml > ${out}/benckmark-etcd-fio.yaml
+}
+
+# Reference: https://www.vpsbenchmarks.com/trials/amazon_ec2_performance_trial_22Nov2020/sysbench
+task_ocp_e2e_bench_sysbench() {
+
+  local test_name=$(yq -r ".task_profiles.${task_name}.test_name" ${GLOBAL_CONFIG})
+  local project_path=$(yq -r ".task_profiles.${task_name}.tests" ${GLOBAL_CONFIG})
+  local run_cmd=$(yq -r ".task_profiles.${task_name}.run_cmd" ${GLOBAL_CONFIG})
+  local out=${result_path_base}/${task_name}
+  mkdir -p ${out}
+
+  _deploy_benchmark_operator
+
+  test -d ${result_path_base}/e2e-benchmarking && rm -rf ${result_path_base}/e2e-benchmarking
+  git clone git@github.com:cloud-bulldozer/e2e-benchmarking.git ${result_path_base}/e2e-benchmarking
+  # pushd ${result_path_base}/e2e-benchmarking/${project_path}
+  # ${run_cmd}
+  # popd
+  source ${result_path_base}/e2e-benchmarking/utils/common.sh
+
+  # echo "#>> $(date)" |tee -a ${out}/ns-benckmark.txt
+  # oc get all -n benchmark-operator -o wide |tee -a ${out}/ns-benckmark.txt
+  # oc get benchmark -n benchmark-operator etcd-fio -o yaml > ${out}/benckmark-etcd-fio.yaml
+
+  cloud_name="test_cloud"
+  _es=${ES_SERVER:-https://search-perfscale-dev-chmf5l4sh66lvxbnadi4bznl3a.us-west-2.es.amazonaws.com:443}
+  cat << EOF > ${out}/benchmark.yaml
+apiVersion: ripsaw.cloudbulldozer.io/v1alpha1
+kind: Benchmark
+metadata:
+  name: ${test_name}
+  namespace: benchmark-operator
+spec:
+  elasticsearch:
+    url: ${_es}
+  clustername: ${cloud_name}
+  test_user: ${cloud_name}-ci
+  metadata:
+    collection: true
+    serviceaccount: backpack-view
+    privileged: true
+  workload:
+    name: sysbench
+    args:
+      enabled: true
+      tests: $(yq -r ".task_profiles.${task_name}.tests" ${GLOBAL_CONFIG})
+EOF
+  oc create -n benchmark-operator -f ${out}/benchmark.yaml
+
+  # Get the uuid of newly created etcd-fio benchmark.
+  long_uuid=$(get_uuid 30)
+  if [ $? -ne 0 ];
+  then
+    echo "exit 1"
+  fi
+
+  uuid=${long_uuid:0:8}
+
+  # Checks the presence of etcd-fio pod. Should exit if pod is not available.
+  test_pod=$(get_pod "app=sysbench-$uuid" 300)
+  if [ $? -ne 0 ];
+  then
+    echo "exit 1"
+  fi
+
+  check_pod_ready_state $test_pod 150s
+  if [ $? -ne 0 ];
+  then
+    echo "Pod wasn't able to move into Running state! Exiting...."
+    echo "exit 1"
+  fi
+
+  wk_state=1
+  for i in {1..60}; do
+    if [[ $(oc get benchmark -n benchmark-operator ${test_name} -o jsonpath='{.status.complete}') == true ]]; then
+      echo "Workload done"
+      wk_state=$?
+      uuid=$(oc get benchmark -n benchmark-operator ${test_name} -o jsonpath="{.status.uuid}")
+      break
+    fi
+    sleep 30
+  done
+
+  if [ "$wk_state" == "1" ] ; then
+    echo "Workload failed"
+    exit 1
+  fi
+
+  echo "#> Starting collecting results..."
+
+  res_path=${out}
+  #test -d ${RES_PATH} && rm -f ${RES_PATH}/*
+  mkdir -p ${res_path}
+
+  oc -n benchmark-operator get pods -o json > ${res_path}/pods.json
+
+  pod_prefix="sysbench-"
+  pod_name=$(jq -r ".items[] | select(.metadata.name | contains(\"${pod_prefix}\")) | .metadata.name" ${res_path}/pods.json)
+  node_name=$(jq -r ".items[] | select(.metadata.name | contains(\"${pod_prefix}\")) | .spec.nodeName" ${res_path}/pods.json)
+
+  oc -n benchmark-operator get all -o wide > ${res_path}/ns-benchmark-operator-objects.txt
+  oc -n benchmark-operator get benchmark >> ${res_path}/ns-benchmark-operator-objects.txt
+  oc -n benchmark-operator logs pod/${pod_name} > ${res_path}/sysbench.txt
+
+  oc debug node/${node_name} -- chroot /host /bin/bash -c \
+    'echo ">> [$(hostname)] [$(date)]"; uptime; cat /proc/cpuinfo; cat /proc/meminfo' > ${res_path}/node_info.txt
+
+}
+
+task_ocp_e2e_bench_sysbench_cpu_speed() {
+  task_ocp_e2e_bench_sysbench "$@"
+}
+
+task_ocp_e2e_bench_sysbench_cpu_stress() {
+  task_ocp_e2e_bench_sysbench "$@"
+}
+
+task_ocp_e2e_bench_sysbench_mem_speed() {
+  task_ocp_e2e_bench_sysbench "$@"
+}
