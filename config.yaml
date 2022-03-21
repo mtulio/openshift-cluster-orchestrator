@@ -49,25 +49,33 @@ defaults:
 # OpenShift Installer Config | cluster profiles
 cluster_profiles:
   # AWS
+  ## Get default binary from system
   aws_default:
     name: aws_default
     platform: aws
-  
-  ## GA releases
+
+  ## GA releases (https://openshift-release.apps.ci.l2s4.p1.openshiftapps.com/)
+  #> Script to download clients: hack/download-ocp-clients.sh
   aws_ga_46:
     name: aws_ga_46
-    installer: openshift-install-4.6.49
     platform: aws
-  aws_default_latest:
-    name: aws_default_latest
-    installer: openshift-install-master-20211029-fix-user-search
+    installer: openshift-install-4.6.56
+    oc: oc-linux-4.6.56
+  aws_ga_47:
+    name: aws_ga_47
     platform: aws
-  
-  ## GA releases
-  aws_ga_46:
-    name: aws_ga_46
-    installer: openshift-install-4.6.49
+    installer: openshift-install-4.7.45
+    oc: oc-linux-4.7.45
+  aws_ga_48:
+    name: aws_ga_48
     platform: aws
+    installer: openshift-install-4.8.35
+    oc: oc-linux-4.8.35
+  aws_ga_49:
+    name: aws_ga_49
+    platform: aws
+    installer: openshift-install-4.9.25
+    oc: oc-linux-4.9.25
 
   ## Development builds
   aws_dev_411:
@@ -82,11 +90,11 @@ cluster_profiles:
     name: aws_dev_latest
     installer: openshift-install-master
     platform: aws
-  aws_dev_410rc0:
-    name: aws_dev_latest
-    installer: openshift-install-4.10.0-rc.0
-    oc: oc-4.10.0-rc.0
+  aws_dev_410:
+    name: aws_dev_410
     platform: aws
+    installer: openshift-install-4.10.0-rc.3
+    oc: oc-linux-4.10.0-rc.3
 
   ### CCO
   aws_dev_cco_sts:
@@ -176,8 +184,16 @@ cluster_profiles:
   azure_49:
     name: azure_49
     platform: azure
-    installer: openshift-install-4.9.17
-    oc: oc-linux-4.9.17
+    installer: openshift-install-4.9.22
+    oc: oc-linux-4.9.22
+    manifest_hooks:
+      - cluster_hook_preserve_bootstrap
+
+  azure_410:
+    name: azure_410
+    platform: azure
+    installer: openshift-install-4.10.0-rc.3
+    oc: oc-linux-4.10.0-rc.3
     manifest_hooks:
       - cluster_hook_preserve_bootstrap
 
