@@ -20,11 +20,11 @@ defaults:
       region: us-east-1
     baseDomain: ${DEFAULT_BASEDOMAIN_AWS}
     #controlPlane:
-    #  type: m5.xlarge
+    #  type: m6i.xlarge
       # TODO: check if it's supported
       #vm_spot_price: 0.192
-    #compute:
-    #  type: m5.xlarge
+    compute:
+      type: m6i.xlarge
       # TODO: check if it's supported
       #vm_spot_price: 0.192
 
@@ -76,6 +76,11 @@ cluster_profiles:
     platform: aws
     installer: openshift-install-4.9.25
     oc: oc-linux-4.9.25
+  aws_ga_410:
+    name: aws_ga_410
+    platform: aws
+    installer: openshift-install-linux-4.10.10
+    oc: oc-linux-4.10.10
 
   ## Development builds
   aws_dev_411:
