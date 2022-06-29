@@ -81,6 +81,11 @@ cluster_profiles:
     platform: aws
     installer: openshift-install-linux-4.10.10
     oc: oc-linux-4.10.10
+  aws_ga_411:
+    name: aws_ga_411
+    platform: aws
+    installer: openshift-install-linux-4.11.0-rc.0
+    oc: oc-linux-4.11.0-rc.0
 
   ## Development builds
   aws_dev_411:
